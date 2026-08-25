@@ -10,7 +10,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="QUANT MACRO TERMINAL v3.5", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="QUANT MACRO TERMINAL v3.6", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -24,7 +24,7 @@ st.markdown("""
 count = st_autorefresh(interval=60000, limit=None, key="macro_horizon_refresh")
 
 # ==========================================
-# 2. KURUMSAL QUANT MAKRO MOTORU (1-HOUR HORIZON)
+# 2. KURUMSAL QUANT MAKRO MOTORU (15-DK EMA)
 # ==========================================
 class MacroHorizonEngine:
     def __init__(self):
@@ -52,8 +52,8 @@ class MacroHorizonEngine:
         }
         self.lookback_days = '5d'
         self.interval = '5m'
-        self.z_window = 72       # 6 saatlik (72 bar) Rejim Hafızası (Ağırlıklar stabil kalsın diye)
-        self.smoothing_span = 6  # 30 dakikalık (6 bar) Üstel Düzeltme Filtresi (Anti-Flicker)
+        self.z_window = 72       # 6 saatlik Rejim Hafızası
+        self.smoothing_span = 3  # YENİ: 15 dakikalık (3 bar) Çevik EMA Filtresi
 
     @st.cache_data(ttl=45, show_spinner=False)
     def fetch_data(_self):
@@ -65,10 +65,8 @@ class MacroHorizonEngine:
         return df
 
     def calculate_horizon_features(self, df):
-        """5 dakikalık gürültüyü silip 30 ve 60 dakikalık makro ivmeleri hesaplar."""
         features = pd.DataFrame(index=df.index)
         
-        # 1. RASYOLARIN 30-60 DAKİKALIK İVMELERİ
         real_yield = df['TIP'] / df['TLT']
         hyg_lqd = df['HYG'] / df['LQD']
         hyg_tlt = df['HYG'] / df['TLT']
@@ -79,8 +77,6 @@ class MacroHorizonEngine:
         slv_gld = df['XAG'] / df['XAU']
         xme_gld = df['XME'] / df['XAU']
         
-        # Rasyo Değişimleri (30 dk ve 60 dk ağırlıklı ortalama)
-        # Formül: 0.6 * (60 Dk Değişim) + 0.4 * (30 Dk Değişim)
         def calc_horizon_momentum(series):
             m30 = (series / series.shift(6) - 1).fillna(0)
             m60 = (series / series.shift(12) - 1).fillna(0)
@@ -96,7 +92,6 @@ class MacroHorizonEngine:
         features['SLV_GLD_Beta'] = calc_horizon_momentum(slv_gld)
         features['XME_GLD_Ratio'] = calc_horizon_momentum(xme_gld)
 
-        # 2. VOLATİLİTE & TAHVİL ŞOKLARI (1 Saatlik Horizon)
         features['Bond_Vol_Shock'] = df['TLT'].pct_change().abs().rolling(12, min_periods=1).mean() * 1000
         if 'VIX3M' in df.columns:
             features['VIX_Term_Structure'] = calc_horizon_momentum(df['VIX'] / (df['VIX3M'] + 1e-6))
@@ -106,11 +101,10 @@ class MacroHorizonEngine:
         features['Carry_Trade'] = calc_horizon_momentum(df['JPY'])
         features['BTC_Liquidity'] = calc_horizon_momentum(df['BTC'])
 
-        # 3. HEDEF VARLIKLARIN VE MAKRO GÖSTERGELERİN 1 SAATLİK İVMELERİ
         for col in ['SPX', 'NQ', 'XAU', 'XAG', 'DXY', 'US10Y', 'VIX']:
             features[f'{col}_Ret'] = calc_horizon_momentum(df[col])
 
-        # 4. LOW-PASS FILTER: Tüm özelliklerin üzerine EMA yumuşatması uygula (Ani zıplamaları yok eder)
+        # 15 dakikalık (3 bar) EMA Düzeltme
         smoothed_features = features.ewm(span=self.smoothing_span).mean()
         return smoothed_features.ffill().bfill()
 
@@ -158,9 +152,9 @@ class MacroHorizonEngine:
 # ==========================================
 engine = MacroHorizonEngine()
 
-st.title("🏛️ TIER-1 QUANT MACRO TERMINAL (v3.5)")
-st.markdown('<span class="horizon-badge">⏱️ ANALİZ UFKU: ÖNÜMÜZDEKİ 30 - 60 DAKİKA</span> <span class="horizon-badge">🛡️ LOW-PASS FILTER AKTİF</span>', unsafe_allow_html=True)
-st.caption(f"Yumuşatılmış Makro İvme & Çoklu-Zaman Dilimi Motoru | Canlı Güncelleme: Aktif ({count})")
+st.title("🏛️ TIER-1 QUANT MACRO TERMINAL (v3.6)")
+st.markdown('<span class="horizon-badge">⏱️ ANALİZ UFKU: 30 - 60 DK</span> <span class="horizon-badge">⚡ 15-DK ÇEVİK FİLTRE AKTİF</span>', unsafe_allow_html=True)
+st.caption(f"Yumuşatılmış Makro İvme & Hızlı Reaksiyon Motoru | Canlı Veri Akışı: Aktif ({count})")
 
 try:
     raw_df = engine.fetch_data()
@@ -169,7 +163,7 @@ try:
 
     tab_spx, tab_nq, tab_xau, tab_xag = st.tabs(["S&P 500", "NASDAQ", "ALTIN (XAU)", "GÜMÜŞ (XAG)"])
 
-    # --- S&P 500 MODELİ ---
+    # --- SPX ---
     with tab_spx:
         spx_matrix = [
             'VIX_Ret', 'VIX_Term_Structure', 'HYG_LQD_Spread', 'HYG_TLT_Spread',
@@ -194,7 +188,7 @@ try:
 
         st.dataframe(table_spx, use_container_width=True, hide_index=True)
 
-    # --- NASDAQ MODELİ ---
+    # --- NQ ---
     with tab_nq:
         nq_matrix = [
             'Real_Yield_Proxy', 'US10Y_Ret', 'XLK_XLF_Rotation', 'VIX_Ret',
@@ -219,7 +213,7 @@ try:
 
         st.dataframe(table_nq, use_container_width=True, hide_index=True)
 
-    # --- ALTIN MODELİ ---
+    # --- XAU ---
     with tab_xau:
         xau_matrix = [
             'Real_Yield_Proxy', 'US10Y_Ret', 'DXY_Ret', 'Bond_Vol_Shock',
@@ -244,7 +238,7 @@ try:
 
         st.dataframe(table_xau, use_container_width=True, hide_index=True)
 
-    # --- GÜMÜŞ MODELİ ---
+    # --- XAG ---
     with tab_xag:
         xag_matrix = [
             'Copper_Gold', 'XME_GLD_Ratio', 'Real_Yield_Proxy', 'DXY_Ret',
