@@ -23,22 +23,22 @@ st.markdown("""
 count = st_autorefresh(interval=60000, limit=None, key="macro_refresh")
 
 # ==========================================
-# 2. KURUMSAL VERİ VE HESAPLAMA MOTORU
+# 2. KURUMSAL VERİ VE HESAPLAMA MOTORU (v2.8)
 # ==========================================
 class QuantMacroEngine:
     def __init__(self):
-        # YENİ ALTYAPI: Vadeli işlemler(Futures) 5dk verilerde koptuğu için en likit ETF'lere (Proxy) geçildi.
+        # YENİ ALTYAPI: Sığ ETF'ler atıldı, HFT (Yüksek Frekanslı) likiditesine sahip varlıklar eklendi.
         self.tickers = {
             'XAU': 'GLD',      # Altın ETF
             'XAG': 'SLV',      # Gümüş ETF
-            'SPX': 'SPY',      # S&P 500 ETF
-            'NQ': 'QQQ',       # Nasdaq ETF
-            'DXY': 'UUP',      # Dolar Endeksi ETF
+            'SPX': 'SPY',      # S&P 500
+            'NQ': 'QQQ',       # Nasdaq
+            'DXY': 'UUP',      # Dolar Endeksi
             'US10Y': '^TNX',   # 10 Yıllık Faiz
             'VIX': '^VIX',     # VIX Endeksi
             'HYG': 'HYG',      # High Yield Kredi
-            'TLT': 'TLT',      # 20+ Yıl Tahvil
-            'COPPER': 'CPER',  # Bakır ETF
+            'TLT': 'TLT',      # Tahvil
+            'COPPER': 'FCX',   # YENİ: Freeport-McMoRan (Aşırı likit Bakır proxy'si)
             'OIL': 'USO',      # Petrol ETF
             'JPY': 'FXY',      # Japon Yeni ETF
             'RSP': 'RSP'       # Eşit Ağırlıklı SPX
@@ -60,8 +60,9 @@ class QuantMacroEngine:
         features = pd.DataFrame(index=df.index)
         features['HYG_TLT_Spread'] = df['HYG'] / df['TLT']
         
-        # MOVE Endeksi (Bond Vol) için min_periods=2 eklendi ki başlarda 0 dönmesin
-        features['Bond_Vol_Proxy'] = df['TLT'].pct_change().rolling(12, min_periods=2).std() * np.sqrt(252*78)
+        # YENİ MOVE ENDEKSİ (Tahvil Hızı): Standart sapma yerine Mutlak İvme (0 sorununu çözer)
+        tlt_returns = df['TLT'].pct_change().abs()
+        features['Bond_Vol_Proxy'] = tlt_returns.rolling(window=6, min_periods=1).mean() * 1000
         
         features['Copper_Gold'] = df['COPPER'] / df['XAU'] 
         features['Gold_Oil'] = df['XAU'] / df['OIL'] 
@@ -77,8 +78,9 @@ class QuantMacroEngine:
     def dynamic_z_score_normalization(self, df):
         mean = df.rolling(window=self.z_window, min_periods=5).mean()
         std = df.rolling(window=self.z_window, min_periods=5).std()
-        # Eğer STD 0 ise (veri durağansa) 1e-8 ekleyerek NaN (Tanımsızlık) hatasını önlüyoruz
-        z_scores = (df - mean) / (std + 1e-8) 
+        
+        # Matematiksel Güvenlik: Eğer std çok küçükse (0.0000..), NaN üretmesini engellemek için 1e-6 ekliyoruz
+        z_scores = (df - mean) / (std + 1e-6) 
         return z_scores.fillna(0)
 
     def calculate_dynamic_weights_and_score(self, z_features, target_ret_col, feature_cols):
@@ -88,11 +90,11 @@ class QuantMacroEngine:
         recent_data = z_features.tail(self.z_window)
         weights = {}
         for col in feature_cols:
-            # Varyans 0 ise korelasyon NaN çıkar, bunu 0'a eşitliyoruz
+            # Varyans çok düşükse korelasyon hesaplanamaz, güvenli şekilde 0 atıyoruz
             corr = recent_data[col].corr(recent_data[target_ret_col])
             weights[col] = 0.0 if pd.isna(corr) else corr
             
-        total_weight = sum(abs(w) for w in weights.values()) + 1e-8
+        total_weight = sum(abs(w) for w in weights.values()) + 1e-6
         normalized_weights = {k: (v / total_weight)*100 for k, v in weights.items()}
         
         latest_row = z_features.iloc[-1]
@@ -106,7 +108,7 @@ class QuantMacroEngine:
 engine = QuantMacroEngine()
 
 st.title("🏛️ TIER-1 QUANT MACRO TERMINAL")
-st.markdown(f"**Gün İçi Likidite Motoru v2.7** (ETF Altyapısı) | Ping: {count}")
+st.markdown(f"**Gün İçi Likidite Motoru v2.8** (Ultra-Likit Proxy Altyapısı) | Ping: {count}")
 
 try:
     raw_df = engine.fetch_market_data()
@@ -185,7 +187,7 @@ try:
 
         st.markdown("---")
         
-        # TEŞHİS PANELİ (Diagnostic Panel) - Raw Veriler burada gözükecek
+        # TEŞHİS PANELİ
         with st.expander("🔍 QUANT TEŞHİS PANELİ (Ham Z-Skor & Piyasa Verileri)"):
             st.markdown("Eğer bir ağırlık **0** ise, ilgili verinin Z-Skoru sabittir (Piyasa o an illikit olabilir veya API veri vermiyordur).")
             diag_cols = ['Bond_Vol_Proxy', 'Copper_Gold', 'HYG_TLT_Spread', 'Carry_Trade']
