@@ -10,7 +10,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="QUANT MACRO TERMINAL v3.7", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="QUANT MACRO TERMINAL v3.8", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -23,7 +23,7 @@ st.markdown("""
 count = st_autorefresh(interval=60000, limit=None, key="macro_horizon_refresh")
 
 # ==========================================
-# 2. KURUMSAL QUANT MAKRO MOTORU (v3.7 WINSORIZED)
+# 2. KURUMSAL QUANT MAKRO MOTORU (v3.8 UNCLIPPED)
 # ==========================================
 class MacroHorizonEngine:
     def __init__(self):
@@ -109,9 +109,8 @@ class MacroHorizonEngine:
     def dynamic_z_score_engine(self, df):
         mean = df.rolling(window=self.z_window, min_periods=12).mean()
         std = df.rolling(window=self.z_window, min_periods=12).std()
+        # DÜZELTME: clip() KALDIRILDI. Korelasyonun çökmesini önlemek için doğal varyans korunuyor.
         z_scores = (df - mean) / (std + 1e-6)
-        # WINSORIZATION: Outlier şoklarını [-3, +3] aralığına kırp
-        z_scores = z_scores.clip(-3.0, 3.0)
         return z_scores.fillna(0)
 
     def compute_horizon_trajectory(self, z_features, target_ret_col, feature_matrix):
@@ -121,13 +120,15 @@ class MacroHorizonEngine:
         recent_data = z_features.tail(self.z_window)
         weights = {}
         for col in feature_matrix:
+            # Varyans korunduğu için korelasyon artık asla NaN (0) vermez
             corr = recent_data[col].corr(recent_data[target_ret_col])
             weights[col] = 0.0 if pd.isna(corr) else corr
 
         total_weight = sum(abs(w) for w in weights.values()) + 1e-6
         normalized_weights = {k: (v / total_weight) * 100 for k, v in weights.items()}
         
-        latest_z = z_features.iloc[-1]
+        # DÜZELTME: Sadece ve sadece en son barın Z-Skoru [-3.0, +3.0] arasına kırpılıyor
+        latest_z = z_features.iloc[-1].clip(-3.0, 3.0)
         
         breakdown = []
         for col in feature_matrix:
@@ -144,8 +145,7 @@ class MacroHorizonEngine:
         breakdown_df = pd.DataFrame(breakdown).sort_values('Seans Ağırlığı (%)', ascending=False)
         
         total_score = sum(latest_z[col] * (normalized_weights[col] / 100.0) for col in feature_matrix)
-        # ÖLÇEKLENMİŞ TANH: -100 kilitlenmesini çözen ölçekleme
-        final_score = np.tanh(total_score / 2.5) * 100
+        final_score = np.tanh(total_score / 2.0) * 100
         return final_score, breakdown_df
 
 # ==========================================
@@ -153,9 +153,9 @@ class MacroHorizonEngine:
 # ==========================================
 engine = MacroHorizonEngine()
 
-st.title("🏛️ TIER-1 QUANT MACRO TERMINAL (v3.7)")
-st.markdown('<span class="horizon-badge">⏱️ ANALİZ UFKU: 30 - 60 DK</span> <span class="horizon-badge">🛡️ WINSORIZED KALİBRASYON</span>', unsafe_allow_html=True)
-st.caption(f"Açılış Şoku Korumalı Dinamik Makro Motoru | Canlı Veri Akışı: Aktif ({count})")
+st.title("🏛️ TIER-1 QUANT MACRO TERMINAL (v3.8)")
+st.markdown('<span class="horizon-badge">⏱️ ANALİZ UFKU: 30 - 60 DK</span> <span class="horizon-badge">⚡ KESİNTİSİZ KORELASYON MOTORU</span>', unsafe_allow_html=True)
+st.caption(f"Dinamik Makro Ağırlıklandırma Sistemi | Canlı Veri Akışı: Aktif ({count})")
 
 try:
     raw_df = engine.fetch_data()
@@ -178,7 +178,7 @@ try:
             st.markdown("### 30-60 Dk Rota Tahmini")
             c = "#00E676" if score_spx > 0 else "#FF1744"
             st.markdown(f"<h1 style='color: {c}; font-size: 55px; margin:0;'>{score_spx:.1f}</h1>", unsafe_allow_html=True)
-            st.markdown(f"**Makro Eğilim:** {'🟢 GÜÇLÜ ALICILI' if score_spx > 20 else '🔴 GÜÇLÜ SATICILI' if score_spx < -20 else '⚪ DENGELİ / YATAY'}")
+            st.markdown(f"**Makro Eğilim:** {'🟢 GÜÇLÜ ALICILI' if score_spx > 15 else '🔴 GÜÇLÜ SATICILI' if score_spx < -15 else '⚪ DENGELİ / YATAY'}")
         with col2:
             fig = go.Figure(go.Bar(
                 x=table_spx['Seans Ağırlığı (%)'], y=table_spx['Katman (Makro Faktör)'], orientation='h',
@@ -203,7 +203,7 @@ try:
             st.markdown("### 30-60 Dk Rota Tahmini")
             c = "#00E676" if score_nq > 0 else "#FF1744"
             st.markdown(f"<h1 style='color: {c}; font-size: 55px; margin:0;'>{score_nq:.1f}</h1>", unsafe_allow_html=True)
-            st.markdown(f"**Makro Eğilim:** {'🟢 GÜÇLÜ ALICILI' if score_nq > 20 else '🔴 GÜÇLÜ SATICILI' if score_nq < -20 else '⚪ DENGELİ / YATAY'}")
+            st.markdown(f"**Makro Eğilim:** {'🟢 GÜÇLÜ ALICILI' if score_nq > 15 else '🔴 GÜÇLÜ SATICILI' if score_nq < -15 else '⚪ DENGELİ / YATAY'}")
         with col2:
             fig = go.Figure(go.Bar(
                 x=table_nq['Seans Ağırlığı (%)'], y=table_nq['Katman (Makro Faktör)'], orientation='h',
@@ -228,7 +228,7 @@ try:
             st.markdown("### 30-60 Dk Rota Tahmini")
             c = "#00E676" if score_xau > 0 else "#FF1744"
             st.markdown(f"<h1 style='color: {c}; font-size: 55px; margin:0;'>{score_xau:.1f}</h1>", unsafe_allow_html=True)
-            st.markdown(f"**Makro Eğilim:** {'🟢 GÜÇLÜ ALICILI' if score_xau > 20 else '🔴 GÜÇLÜ SATICILI' if score_xau < -20 else '⚪ DENGELİ / YATAY'}")
+            st.markdown(f"**Makro Eğilim:** {'🟢 GÜÇLÜ ALICILI' if score_xau > 15 else '🔴 GÜÇLÜ SATICILI' if score_xau < -15 else '⚪ DENGELİ / YATAY'}")
         with col2:
             fig = go.Figure(go.Bar(
                 x=table_xau['Seans Ağırlığı (%)'], y=table_xau['Katman (Makro Faktör)'], orientation='h',
@@ -253,7 +253,7 @@ try:
             st.markdown("### 30-60 Dk Rota Tahmini")
             c = "#00E676" if score_xag > 0 else "#FF1744"
             st.markdown(f"<h1 style='color: {c}; font-size: 55px; margin:0;'>{score_xag:.1f}</h1>", unsafe_allow_html=True)
-            st.markdown(f"**Makro Eğilim:** {'🟢 GÜÇLÜ ALICILI' if score_xag > 20 else '🔴 GÜÇLÜ SATICILI' if score_xag < -20 else '⚪ DENGELİ / YATAY'}")
+            st.markdown(f"**Makro Eğilim:** {'🟢 GÜÇLÜ ALICILI' if score_xag > 15 else '🔴 GÜÇLÜ SATICILI' if score_xag < -15 else '⚪ DENGELİ / YATAY'}")
         with col2:
             fig = go.Figure(go.Bar(
                 x=table_xag['Seans Ağırlığı (%)'], y=table_xag['Katman (Makro Faktör)'], orientation='h',
