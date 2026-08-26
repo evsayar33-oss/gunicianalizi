@@ -10,7 +10,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 QUANT TERMINAL v4.0 (4H)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="QUANT MACRO TERMINAL v4.5 (4H INERTIA)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -24,7 +24,7 @@ st.markdown("""
 count = st_autorefresh(interval=120000, limit=None, key="macro_4h_refresh")
 
 # ==========================================
-# 2. KURUMSAL QUANT MAKRO MOTORU (4-HOUR HORIZON)
+# 2. KURUMSAL QUANT MAKRO MOTORU (v4.5 INERTIA)
 # ==========================================
 class MacroHorizon4HEngine:
     def __init__(self):
@@ -50,10 +50,10 @@ class MacroHorizon4HEngine:
             'BTC': 'BTC-USD',     # Global Likidite
             'XME': 'XME'          # Madencilik / Sanayi
         }
-        self.lookback_days = '1mo'  # 1 Aylık Veri Geçmişi
+        self.lookback_days = '1mo'  # 1 Aylık Veri
         self.interval = '15m'       # 15 Dakikalık Barlar
-        self.z_window = 96          # ~3-4 Günlük (96 Bar) Rejim Hafızası
-        self.smoothing_span = 4     # 1 Saatlik (4 bar) Üstel Düzeltme
+        self.z_window = 96          # ~4 Günlük Rejim Hafızası
+        self.inertia_span = 8       # 2 Saatlik (8 bar) Eylemsizlik Filtresi
 
     @st.cache_data(ttl=90, show_spinner=False)
     def fetch_data(_self):
@@ -64,7 +64,8 @@ class MacroHorizon4HEngine:
         df.rename(columns=inv_map, inplace=True)
         return df
 
-    def calculate_4h_features(self, df):
+    def calculate_continuous_4h_features(self, df):
+        """Sert drop-off'ları engelleyen Sürekli EWMA İvme Motoru."""
         features = pd.DataFrame(index=df.index)
         
         # 1. RASYOLAR
@@ -78,45 +79,47 @@ class MacroHorizon4HEngine:
         slv_gld = df['XAG'] / df['XAU']
         xme_gld = df['XME'] / df['XAU']
         
-        # 4 SAATLİK VE 8 SAATLİK İVME FORMÜLÜ (15m Bar Bazında)
-        # shift(16) = 16 * 15dk = 4 Saat
-        # shift(32) = 32 * 15dk = 8 Saat
-        def calc_4h_momentum(series):
-            m4h = (series / series.shift(16) - 1).fillna(0)
-            m8h = (series / series.shift(32) - 1).fillna(0)
-            return (0.7 * m4h) + (0.3 * m8h)
+        # SÜREKLİ 4H VE 8H EWMA İVME FORMÜLÜ (Pencere düşüş şoklarını yok eder)
+        def calc_smooth_velocity(series):
+            # 16 barlık (4 saat) ve 32 barlık (8 saat) üstel getiri hızı
+            ret = np.log(series / series.shift(1)).fillna(0)
+            vel_4h = ret.ewm(span=16).mean() * 16
+            vel_8h = ret.ewm(span=32).mean() * 32
+            return (0.7 * vel_4h) + (0.3 * vel_8h)
 
-        features['Real_Yield_Proxy'] = calc_4h_momentum(real_yield)
-        features['HYG_LQD_Spread'] = calc_4h_momentum(hyg_lqd)
-        features['HYG_TLT_Spread'] = calc_4h_momentum(hyg_tlt)
-        features['XLK_XLF_Rotation'] = calc_4h_momentum(xlk_xlf)
-        features['SPY_RSP_Breadth'] = calc_4h_momentum(spy_rsp)
-        features['Copper_Gold'] = calc_4h_momentum(copper_gold)
-        features['Gold_Oil'] = calc_4h_momentum(gold_oil)
-        features['SLV_GLD_Beta'] = calc_4h_momentum(slv_gld)
-        features['XME_GLD_Ratio'] = calc_4h_momentum(xme_gld)
+        features['Real_Yield_Proxy'] = calc_smooth_velocity(real_yield)
+        features['HYG_LQD_Spread'] = calc_smooth_velocity(hyg_lqd)
+        features['HYG_TLT_Spread'] = calc_smooth_velocity(hyg_tlt)
+        features['XLK_XLF_Rotation'] = calc_smooth_velocity(xlk_xlf)
+        features['SPY_RSP_Breadth'] = calc_smooth_velocity(spy_rsp)
+        features['Copper_Gold'] = calc_smooth_velocity(copper_gold)
+        features['Gold_Oil'] = calc_smooth_velocity(gold_oil)
+        features['SLV_GLD_Beta'] = calc_smooth_velocity(slv_gld)
+        features['XME_GLD_Ratio'] = calc_smooth_velocity(xme_gld)
 
-        # Volatilite ve Makro Şoklar (4 Saatlik Ortalama)
-        features['Bond_Vol_Shock'] = df['TLT'].pct_change().abs().rolling(16, min_periods=1).mean() * 1000
+        # Tahvil ve Volatilite Şoku
+        tlt_ret = np.log(df['TLT'] / df['TLT'].shift(1)).abs().fillna(0)
+        features['Bond_Vol_Shock'] = tlt_ret.ewm(span=16).mean() * 1000
+        
         if 'VIX3M' in df.columns:
-            features['VIX_Term_Structure'] = calc_4h_momentum(df['VIX'] / (df['VIX3M'] + 1e-6))
+            features['VIX_Term_Structure'] = calc_smooth_velocity(df['VIX'] / (df['VIX3M'] + 1e-6))
         else:
-            features['VIX_Term_Structure'] = calc_4h_momentum(df['VIX'])
+            features['VIX_Term_Structure'] = calc_smooth_velocity(df['VIX'])
 
-        features['Carry_Trade'] = calc_4h_momentum(df['JPY'])
-        features['BTC_Liquidity'] = calc_4h_momentum(df['BTC'])
+        features['Carry_Trade'] = calc_smooth_velocity(df['JPY'])
+        features['BTC_Liquidity'] = calc_smooth_velocity(df['BTC'])
 
-        # Hedef Varlıkların 4 Saatlik Momentumları
+        # Hedef Varlıkların Hızları
         for col in ['SPX', 'NQ', 'XAU', 'XAG', 'DXY', 'US10Y', 'VIX']:
-            features[f'{col}_Ret'] = calc_4h_momentum(df[col])
+            features[f'{col}_Ret'] = calc_smooth_velocity(df[col])
 
-        # 1 Saatlik (4 barlık) EMA Yumuşatma Filtresi
-        smoothed_features = features.ewm(span=self.smoothing_span).mean()
+        # Sinyal Eylemsizliği (Inertia): 2 saatlik span ile veriyi stabilize et
+        smoothed_features = features.ewm(span=self.inertia_span).mean()
         return smoothed_features.ffill().bfill()
 
     def dynamic_z_score_engine(self, df):
-        mean = df.rolling(window=self.z_window, min_periods=16).mean()
-        std = df.rolling(window=self.z_window, min_periods=16).std()
+        mean = df.rolling(window=self.z_window, min_periods=24).mean()
+        std = df.rolling(window=self.z_window, min_periods=24).std()
         z_scores = (df - mean) / (std + 1e-6)
         return z_scores.fillna(0)
 
@@ -159,13 +162,13 @@ class MacroHorizon4HEngine:
 # ==========================================
 engine = MacroHorizon4HEngine()
 
-st.title("🏛️ TIER-1 QUANT MACRO TERMINAL (v4.0)")
-st.markdown('<span class="horizon-badge">⏱️ ANALİZ UFKU: ÖNÜMÜZDEKİ 4 SAAT (H4 ENGINE)</span>', unsafe_allow_html=True)
-st.caption(f"15m Barlar | 4-Günlük Rejim Hafızası | Canlı Veri Akışı: Aktif ({count})")
+st.title("🏛️ TIER-1 QUANT MACRO TERMINAL (v4.5)")
+st.markdown('<span class="horizon-badge">⏱️ ANALİZ UFKU: ÖNÜMÜZDEKİ 4 SAAT (H4 ENGINE)</span> <span class="horizon-badge">🛡️ SİNYAL EYLEMSİZLİĞİ (INERTIA) AKTİF</span>', unsafe_allow_html=True)
+st.caption(f"Sürekli EWMA İvmesi & 4-Günlük Rejim Motoru | Canlı Veri Akışı: Aktif ({count})")
 
 try:
     raw_df = engine.fetch_data()
-    features_df = engine.calculate_4h_features(raw_df)
+    features_df = engine.calculate_continuous_4h_features(raw_df)
     z_scores = engine.dynamic_z_score_engine(features_df)
 
     tab_spx, tab_nq, tab_xau, tab_xag = st.tabs(["S&P 500", "NASDAQ", "ALTIN (XAU)", "GÜMÜŞ (XAG)"])
