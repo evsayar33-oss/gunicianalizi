@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 ATTENTION TERMINAL (v16.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 ATTENTION TERMINAL (v17.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -25,10 +25,10 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # 2 dakikada bir otomatik yenile
-count = st_autorefresh(interval=120000, limit=None, key="macro_160_refresh")
+count = st_autorefresh(interval=120000, limit=None, key="macro_170_refresh")
 
 # ==========================================
-# 2. NON-LINEAR ATTENTION QUANT MAKRO MOTORU (v16.0)
+# 2. NON-LINEAR ATTENTION QUANT MOTORU (v17.0)
 # ==========================================
 class AttentionMacroEngine:
     def __init__(self):
@@ -91,13 +91,13 @@ class AttentionMacroEngine:
 
         features = pd.DataFrame(index=df.index)
         
-        # ÇOKLU ZAMAN DİLİMLİ İVME: Son 1 Saat (%60) + Son 4 Saat (%40)
+        # Çoklu Zaman Dilimli İvme: 1 Saat (%60) + 4 Saat (%40)
         def calc_multiscale_vel(series):
             v1h = series.pct_change(1).fillna(0)
             v4h = series.pct_change(4).fillna(0)
             return (0.6 * v1h) + (0.4 * v4h)
 
-        # 1. KENDİ FİYAT MOMENTUMLARI (1H + 4H Hibrit)
+        # 1. KENDİ FİYAT MOMENTUMLARI
         for col in ['SPX', 'NQ', 'XAU', 'XAG']:
             if col in df: features[f'{col}_Mom'] = calc_multiscale_vel(df[col])
 
@@ -131,13 +131,14 @@ class AttentionMacroEngine:
         return z_scores.fillna(0)
 
     def compute_asset_score(self, z_features, df, asset_type):
+        """Sözlük yapısıyla döndürür (Unpack hatası imkansızdır)."""
         empty_df = pd.DataFrame(columns=['Katman (Öncü Faktör)', 'Z-Skor', 'Dinamik Dikkat Ağırlığı (%)', 'Net Katkı'])
         if z_features.empty:
-            return 0.0, empty_df, "⚪ DENGELİ KONSOLİDASYON", "div-neutral"
+            return {'score': 0.0, 'table': empty_df, 'msg': "⚪ DENGELİ KONSOLİDASYON", 'css': "div-neutral"}
 
         latest_z = z_features.iloc[-1].clip(-3.0, 3.0)
 
-        # TEMEL YAPISAL YÖNLER (Priors)
+        # YAPISAL BAZ AĞIRLIKLAR
         if asset_type == 'XAG': # GÜMÜŞ
             base_weights = {
                 'XAG_Mom': 25.0, 'XME_GLD_Ratio': 20.0, 'Copper_Gold': 20.0,
@@ -167,20 +168,15 @@ class AttentionMacroEngine:
             }
             target_col = 'SPX'
 
-        # ==========================================================
-        # NON-LINEAR ATTENTION (ŞOK AĞIRLIKLANDIRMA ALGORİTMASI)
-        # ==========================================================
-        # Şiddetli hareket eden faktörler (Z-skor yüksek) otomatik olarak daha fazla ağırlık alır!
+        # NON-LINEAR ATTENTION HESAPLAMA
         attention_multipliers = {}
         for col, base_w in base_weights.items():
             z = abs(latest_z[col]) if col in latest_z else 0.0
-            # Doğrusal olmayan dikkat katsayısı: 1 + |Z|^1.4
             shock_boost = 1.0 + (z ** 1.4)
             attention_multipliers[col] = abs(base_w) * shock_boost
 
         total_attention = sum(attention_multipliers.values()) + 1e-6
 
-        # Ağırlıkları yeniden normalize et (Toplamları %100 olsun)
         dynamic_weights = {}
         for col, base_w in base_weights.items():
             sign = 1.0 if base_w >= 0 else -1.0
@@ -200,15 +196,11 @@ class AttentionMacroEngine:
 
         breakdown_df = pd.DataFrame(breakdown).sort_values('Dinamik Dikkat Ağırlığı (%)', ascending=False)
         total_score = sum(latest_z[col] * (dynamic_weights[col] / 100.0) for col in dynamic_weights if col in latest_z)
-        
-        # Kararlı Tanh Sıkıştırması
         final_score = np.tanh(total_score / 0.8) * 100
 
-        # ==========================================================
-        # KUSURSUZ AYRIŞMA & TREND DEDEKTÖRÜ
-        # ==========================================================
+        # AYRIŞMA VE TREND KARARI
         if final_score > 15:
-            divergence_msg = "🚀 GÜÇLÜ BOĞA TRENDİ (Fiyat ve Makro İvme Alıcıları Destekliyor)"
+            divergence_msg = "🚀 GÜÇLÜ BOĞA TRENDİ (Alıcılar ve Makro İvme Hakim)"
             div_class = "div-bull"
         elif final_score < -15:
             divergence_msg = "🩸 GÜÇLÜ AYI BASKISI (Satıcılar ve Makro Zemin Üstün)"
@@ -217,16 +209,21 @@ class AttentionMacroEngine:
             divergence_msg = "⚪ DENGELİ KONSOLİDASYON (Piyasa Yönsüz / İşlem Açma)"
             div_class = "div-neutral"
 
-        return final_score, breakdown_df, divergence_msg, div_class
+        return {
+            'score': final_score,
+            'table': breakdown_df,
+            'msg': divergence_msg,
+            'css': div_class
+        }
 
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
 engine = AttentionMacroEngine()
 
-st.title("🏛️ TIER-1 ATTENTION TERMINAL (v16.0)")
-st.markdown('<span class="status-badge">⚡ SALIENCE ATTENTION ENGINE (DİNAMİK ŞOK MATRİSİ)</span>', unsafe_allow_html=True)
-st.caption("1H+4H Çoklu İvme + Şiddete Göre Otomatik Ağırlıklandıran Doğrusal Olmayan Makro Motoru")
+st.title("🏛️ TIER-1 ATTENTION TERMINAL (v17.0)")
+st.markdown('<span class="status-badge">⚡ SALIENCE ATTENTION & ZERO-UNPACK ENGINE</span>', unsafe_allow_html=True)
+st.caption("Doğrusal Olmayan Şok Ağırlıklandırması | 1H+4H Çoklu Zaman Dilimi")
 
 try:
     raw_df = engine.fetch_all_data()
@@ -239,18 +236,22 @@ try:
 
         tab_spx, tab_nq, tab_xau, tab_xag = st.tabs(["S&P 500 (ES=F)", "NASDAQ (NQ=F)", "ALTIN (GC=F)", "GÜMÜŞ (SI=F)"])
 
-        def render_view(score, table, div_msg, div_class, asset_title):
+        def render_view(res, asset_title):
+            score = res['score']
+            table = res['table']
+            div_msg = res['msg']
+            div_class = res['css']
+
             col1, col2 = st.columns([1, 2])
             with col1:
                 st.markdown(f"### {asset_title} 4H Rotası")
                 
-                # Nötr bölge [-15, +15] BEYAZ!
                 if score > 15:
-                    c = "#00E676"  # Gerçek Boğa (Yeşil)
+                    c = "#00E676"  # Yeşil
                 elif score < -15:
-                    c = "#FF1744"  # Gerçek Ayı (Kırmızı)
+                    c = "#FF1744"  # Kırmızı
                 else:
-                    c = "#ECEFF1"  # Nötr / Dengeli (Beyaz)
+                    c = "#ECEFF1"  # Beyaz (Nötr)
 
                 st.markdown(f"<h1 style='color: {c}; font-size: 55px; margin:0;'>{score:.1f}</h1>", unsafe_allow_html=True)
                 st.markdown(f'<div class="{div_class}">{div_msg}</div>', unsafe_allow_html=True)
@@ -266,20 +267,16 @@ try:
             st.dataframe(table, use_container_width=True, hide_index=True)
 
         with tab_spx:
-            score_spx, table_spx, div_spx, class_spx = engine.compute_asset_score(z_scores, raw_df, 'SPX')
-            render_view(score_spx, table_spx, div_spx, class_spx, "S&P 500 (ES=F)")
+            render_view(engine.compute_asset_score(z_scores, raw_df, 'SPX'), "S&P 500 (ES=F)")
 
         with tab_nq:
-            score_nq, table_nq = engine.compute_asset_score(z_scores, raw_df, 'NQ')
-            render_view(score_nq, table_nq, div_nq, class_nq, "NASDAQ (NQ=F)")
+            render_view(engine.compute_asset_score(z_scores, raw_df, 'NQ'), "NASDAQ (NQ=F)")
 
         with tab_xau:
-            score_xau, table_xau, div_xau, class_xau = engine.compute_asset_score(z_scores, raw_df, 'XAU')
-            render_view(score_xau, table_xau, div_xau, class_xau, "ALTIN (GC=F)")
+            render_view(engine.compute_asset_score(z_scores, raw_df, 'XAU'), "ALTIN (GC=F)")
 
         with tab_xag:
-            score_xag, table_xag, div_xag, class_xag = engine.compute_asset_score(z_scores, raw_df, 'XAG')
-            render_view(score_xag, table_xag, div_xag, class_xag, "GÜMÜŞ (SI=F)")
+            render_view(engine.compute_asset_score(z_scores, raw_df, 'XAG'), "GÜMÜŞ (SI=F)")
 
 except Exception as e:
     st.error(f"Sistem Hatası: {str(e)}")
