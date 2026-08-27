@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 SHARPE TERMINAL (v18.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v19.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -24,13 +24,13 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2 dakikada bir otomatik yenile
-count = st_autorefresh(interval=120000, limit=None, key="macro_180_refresh")
+# 2 dakikada bir otomatik yenileme
+count = st_autorefresh(interval=120000, limit=None, key="macro_190_refresh")
 
 # ==========================================
-# 2. SHARPE QUANT MAKRO MOTORU (v18.0)
+# 2. BAĞIMSIZ AKIŞ QUANT MAKRO MOTORU (v19.0)
 # ==========================================
-class SharpeMacroEngine:
+class NativeStreamMacroEngine:
     def __init__(self):
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
@@ -38,17 +38,17 @@ class SharpeMacroEngine:
             'GC=F': 'XAU',          # Altın Vadeli
             'SI=F': 'XAG',          # Gümüş Vadeli
             'HG=F': 'COPPER',       # Bakır Vadeli
-            'CL=F': 'OIL',          # Ham Petrol Vadeli
-            'EURUSD=X': 'EUR',      # Dolar Gücü (Ters DXY)
+            'CL=F': 'OIL',          # Ham Petrol
+            'EURUSD=X': 'EUR',      # Dolar Gücü
             'USDJPY=X': 'JPY',      # Carry Trade
-            'BTC-USD': 'BTC',       # 24/7 Global Likidite
+            'BTC-USD': 'BTC',       # Kripto Likidite
             'IEF': 'BONDS',         # 7-10Y Hazine Tahvili
             'TLT': 'TLT',           # 20+ Yıl Hazine Tahvili
             'TIP': 'TIP',           # TIPS (Reel Faiz)
             'HYG': 'HYG',           # Junk Kredi
             'LQD': 'LQD',           # IG Kredi
-            'XLK': 'XLK',           # Teknoloji Sektörü
-            'XLF': 'XLF',           # Finans Sektörü
+            'XLK': 'XLK',           # Teknoloji
+            'XLF': 'XLF',           # Finans
             'RSP': 'RSP',           # Eşit Ağırlıklı S&P 500
             'XME': 'XME'            # Madencilik Endeksi
         }
@@ -71,170 +71,188 @@ class SharpeMacroEngine:
         return pd.Series(dtype=float)
 
     @st.cache_data(ttl=120, show_spinner=False)
-    def fetch_all_data(_self):
-        results = {}
+    def fetch_all_native_data(_self):
+        """Her varlığı bağımsız bir seri olarak çeker (Flatline oluşamaz)."""
+        series_dict = {}
         def worker(sym, alias):
             s = _self.fetch_single_ticker(sym)
             if not s.empty:
-                results[alias] = s
+                series_dict[alias] = s
 
         with ThreadPoolExecutor(max_workers=16) as executor:
             for sym, alias in _self.symbol_map.items():
                 executor.submit(worker, sym, alias)
 
-        df = pd.DataFrame(results).ffill().bfill()
-        return df
+        return series_dict
 
-    def calculate_sharpe_features(self, df):
-        """Sıfır tabanlı mutlak getiri momentumu hesaplar (Asla yönü ters çevirmez)."""
-        if df.empty or len(df) < 5:
-            return pd.DataFrame()
-
-        features = pd.DataFrame(index=df.index)
+    def calculate_native_sharpe(self, s):
+        """Tek bir varlığın kendi saf mumları üzerinden Sharpe İvmesini hesaplar."""
+        if s is None or len(s) < 5:
+            return 0.0
         
-        # 1H (%50) + 4H (%50) Gerçek Yön İvmesi
-        def calc_real_momentum(series):
-            r1h = series.pct_change(1).fillna(0)
-            r4h = series.pct_change(4).fillna(0)
-            return (0.5 * r1h) + (0.5 * r4h)
-
-        # 1. KENDİ FİYAT MOMENTUMLARI
-        for col in ['SPX', 'NQ', 'XAU', 'XAG']:
-            if col in df: features[f'{col}_Mom'] = calc_real_momentum(df[col])
-
-        # 2. MAKRO GÖSTERGELER
-        if 'TIP' in df and 'TLT' in df: features['Real_Yield_Shock'] = calc_real_momentum(df['TIP'] / (df['TLT'] + 1e-6))
-        if 'HYG' in df and 'LQD' in df: features['Credit_Risk_Spread'] = calc_real_momentum(df['HYG'] / (df['LQD'] + 1e-6))
-        if 'HYG' in df and 'TLT' in df: features['Credit_Flight_Safety'] = calc_real_momentum(df['HYG'] / (df['TLT'] + 1e-6))
-        if 'XLK' in df and 'XLF' in df: features['Sector_Rotation'] = calc_real_momentum(df['XLK'] / (df['XLF'] + 1e-6))
-        if 'SPX' in df and 'RSP' in df: features['Market_Breadth'] = calc_real_momentum(df['SPX'] / (df['RSP'] + 1e-6))
-        if 'COPPER' in df and 'XAU' in df: features['Copper_Gold'] = calc_real_momentum(df['COPPER'] / (df['XAU'] + 1e-6))
-        if 'XAU' in df and 'OIL' in df:    features['Gold_Oil'] = calc_real_momentum(df['XAU'] / (df['OIL'] + 1e-6))
-        if 'XAG' in df and 'XAU' in df:    features['SLV_GLD_Beta'] = calc_real_momentum(df['XAG'] / (df['XAU'] + 1e-6))
-        if 'XME' in df and 'XAU' in df:    features['XME_GLD_Ratio'] = calc_real_momentum(df['XME'] / (df['XAU'] + 1e-6))
-
-        # Dolar ve Faiz (Dolar Düşüşü = Pozitif Ralli)
-        if 'EUR' in df:   features['DXY_Pressure'] = -calc_real_momentum(df['EUR'])
-        if 'BONDS' in df: features['Bond_Yield_Pressure'] = -calc_real_momentum(df['BONDS'])
-        if 'BTC' in df:   features['BTC_Liquidity'] = calc_real_momentum(df['BTC'])
-        if 'JPY' in df:   features['Carry_Trade'] = calc_real_momentum(df['JPY'])
-
-        return features.ffill().bfill()
-
-    def calculate_volatility_normalized_scores(self, df):
-        """Ortalamayı ÇIKARMAZ! Sadece volatiliteye böler (Yükselen varlık kesinlikle pozitif kalır)."""
-        if df.empty:
-            return pd.DataFrame()
-        # Son 24 Saatin Volatilitesi
-        rolling_vol = df.rolling(24, min_periods=4).std()
-        # Sharpe Skoru: Getiri / Volatilite
-        sharpe_scores = df / (rolling_vol + 1e-5)
-        return sharpe_scores.fillna(0)
-
-    def compute_asset_score(self, sharpe_features, df, asset_type):
-        empty_df = pd.DataFrame(columns=['Katman (Öncü Faktör)', 'Sharpe İvmesi', 'Dinamik Dikkat Ağırlığı (%)', 'Net Katkı'])
-        if sharpe_features.empty:
-            return {'score': 0.0, 'table': empty_df, 'msg': "⚪ DENGELİ KONSOLİDASYON", 'css': "div-neutral"}
-
-        latest_s = sharpe_features.iloc[-1].clip(-3.0, 3.0)
-
-        # YAPISAL BAZ AĞIRLIKLAR
-        if asset_type == 'XAG': # GÜMÜŞ
-            base_weights = {
-                'XAG_Mom': 30.0, 'XME_GLD_Ratio': 25.0, 'Copper_Gold': 20.0,
-                'SLV_GLD_Beta': 10.0, 'Real_Yield_Shock': 10.0, 'DXY_Pressure': -15.0,
-                'BTC_Liquidity': 5.0, 'Gold_Oil': 5.0, 'Credit_Risk_Spread': 5.0, 'Bond_Yield_Pressure': -5.0
-            }
-            target_col = 'XAG'
-        elif asset_type == 'XAU': # ALTIN
-            base_weights = {
-                'XAU_Mom': 30.0, 'Real_Yield_Shock': 25.0, 'DXY_Pressure': -20.0,
-                'Bond_Yield_Pressure': -15.0, 'Gold_Oil': 15.0, 'SLV_GLD_Beta': 10.0,
-                'Credit_Flight_Safety': -5.0, 'Carry_Trade': 5.0, 'Copper_Gold': -3.0, 'BTC_Liquidity': -2.0
-            }
-            target_col = 'XAU'
-        elif asset_type == 'NQ': # NASDAQ
-            base_weights = {
-                'NQ_Mom': 30.0, 'Credit_Risk_Spread': 15.0, 'Sector_Rotation': 15.0,
-                'BTC_Liquidity': 15.0, 'Real_Yield_Shock': -15.0, 'Bond_Yield_Pressure': -15.0,
-                'Carry_Trade': 10.0, 'DXY_Pressure': -10.0, 'Market_Breadth': -5.0, 'Copper_Gold': 5.0
-            }
-            target_col = 'NQ'
-        else: # S&P 500
-            base_weights = {
-                'SPX_Mom': 30.0, 'Credit_Risk_Spread': 20.0, 'Credit_Flight_Safety': 15.0,
-                'Sector_Rotation': 15.0, 'BTC_Liquidity': 10.0, 'Real_Yield_Shock': -10.0,
-                'Bond_Yield_Pressure': -10.0, 'Carry_Trade': 10.0, 'DXY_Pressure': -10.0, 'Market_Breadth': -5.0
-            }
-            target_col = 'SPX'
-
-        # DİNAMİK ŞOK DİKKAT AĞIRLIĞI
-        attention_multipliers = {}
-        for col, base_w in base_weights.items():
-            s = abs(latest_s[col]) if col in latest_s else 0.0
-            # Güçlü hareket eden faktörün ağırlığını katla
-            attention_multipliers[col] = abs(base_w) * (1.0 + (s ** 1.2))
-
-        total_attention = sum(attention_multipliers.values()) + 1e-6
-
-        dynamic_weights = {}
-        for col, base_w in base_weights.items():
-            sign = 1.0 if base_w >= 0 else -1.0
-            norm_w = (attention_multipliers[col] / total_attention) * 100.0 * sign
-            dynamic_weights[col] = norm_w
-
-        breakdown = []
-        for col, w_val in dynamic_weights.items():
-            s_val = latest_s[col] if col in latest_s else 0.0
-            contribution = s_val * (w_val / 100.0)
-            breakdown.append({
-                'Katman (Öncü Faktör)': col,
-                'Sharpe İvmesi': round(s_val, 2),
-                'Dinamik Dikkat Ağırlığı (%)': round(w_val, 1),
-                'Net Katkı': round(contribution, 3)
-            })
-
-        breakdown_df = pd.DataFrame(breakdown).sort_values('Dinamik Dikkat Ağırlığı (%)', ascending=False)
-        total_score = sum(latest_s[col] * (dynamic_weights[col] / 100.0) for col in dynamic_weights if col in latest_s)
+        # Kendi son 1 saat ve 4 saatlik getirisini al
+        r1h = (s.iloc[-1] / s.iloc[-2]) - 1.0 if len(s) >= 2 else 0.0
+        r4h = (s.iloc[-1] / s.iloc[-5]) - 1.0 if len(s) >= 5 else 0.0
+        real_mom = (0.6 * r1h) + (0.4 * r4h)
         
-        # -100 ile +100 Arası Kesin Yön Skoru
-        final_score = np.tanh(total_score / 0.7) * 100
+        # Son 24 barın standart sapması
+        pct_series = s.pct_change().dropna()
+        vol = pct_series.tail(24).std()
+        if pd.isna(vol) or vol < 1e-6:
+            vol = 0.005 # Güvenli taban volatilite
+            
+        sharpe = real_mom / vol
+        return float(np.clip(sharpe, -3.0, 3.0))
 
-        # GERÇEK TREND KARARI
-        if final_score > 15:
-            divergence_msg = "🚀 GÜÇLÜ BOĞA TRENDİ (Alıcılar ve Likidite Piyasayı Sürüklüyor)"
-            div_class = "div-bull"
-        elif final_score < -15:
-            divergence_msg = "🩸 GÜÇLÜ AYI BASKISI (Satıcılar ve Makro Fren Üstün)"
-            div_class = "div-bear"
-        else:
-            divergence_msg = "⚪ DENGELİ KONSOLİDASYON (Piyasa Yönsüz)"
-            div_class = "div-neutral"
+    def calculate_ratio_sharpe(self, s1, s2):
+        """İki serinin ortak indeksli rasyo ivmesini hesaplar."""
+        if s1 is None or s2 is None or s1.empty or s2.empty:
+            return 0.0
+        common_idx = s1.index.intersection(s2.index)
+        if len(common_idx) < 5:
+            return 0.0
+        ratio = s1.loc[common_idx] / (s2.loc[common_idx] + 1e-6)
+        return self.calculate_native_sharpe(ratio)
 
-        return {
-            'score': final_score,
-            'table': breakdown_df,
-            'msg': divergence_msg,
-            'css': div_class
+    def compute_all_asset_scores(self, data):
+        """Tüm göstergeleri sıfırlanma hatası olmadan hesaplar."""
+        scores = {}
+        
+        # 1. HAM SHARPE İVMELERİ
+        spx_mom = self.calculate_native_sharpe(data.get('SPX'))
+        nq_mom = self.calculate_native_sharpe(data.get('NQ'))
+        xau_mom = self.calculate_native_sharpe(data.get('XAU'))
+        xag_mom = self.calculate_native_sharpe(data.get('XAG'))
+        
+        btc_mom = self.calculate_native_sharpe(data.get('BTC'))
+        jpy_mom = self.calculate_native_sharpe(data.get('JPY'))
+        dxy_mom = -self.calculate_native_sharpe(data.get('EUR'))  # EUR Düşüşü = Dolar Artışı
+        yield_mom = -self.calculate_native_sharpe(data.get('BONDS')) # Tahvil Düşüşü = Faiz Artışı
+        
+        real_yield_shock = self.calculate_ratio_sharpe(data.get('TIP'), data.get('TLT'))
+        credit_risk = self.calculate_ratio_sharpe(data.get('HYG'), data.get('LQD'))
+        credit_flight = self.calculate_ratio_sharpe(data.get('HYG'), data.get('TLT'))
+        sector_rot = self.calculate_ratio_sharpe(data.get('XLK'), data.get('XLF'))
+        breadth = self.calculate_ratio_sharpe(data.get('SPX'), data.get('RSP'))
+        
+        copper_gold = self.calculate_ratio_sharpe(data.get('COPPER'), data.get('XAU'))
+        gold_oil = self.calculate_ratio_sharpe(data.get('XAU'), data.get('OIL'))
+        slv_gld = self.calculate_ratio_sharpe(data.get('XAG'), data.get('XAU'))
+        xme_gld = self.calculate_ratio_sharpe(data.get('XME'), data.get('XAU'))
+
+        # ==========================================
+        # HER VARLIK İÇİN HESAPLAMA FONKSİYONU
+        # ==========================================
+        def build_result(base_weights, factors_dict, target_mom):
+            # Şiddete Göre Otomatik Ağırlık Katlama (Attention)
+            multipliers = {}
+            for k, w in base_weights.items():
+                val = abs(factors_dict.get(k, 0.0))
+                multipliers[k] = abs(w) * (1.0 + (val ** 1.3))
+            
+            total_att = sum(multipliers.values()) + 1e-6
+            dyn_weights = {}
+            for k, w in base_weights.items():
+                sign = 1.0 if w >= 0 else -1.0
+                dyn_weights[k] = (multipliers[k] / total_att) * 100.0 * sign
+
+            breakdown = []
+            for k, w in dyn_weights.items():
+                val = factors_dict.get(k, 0.0)
+                contribution = val * (w / 100.0)
+                breakdown.append({
+                    'Katman (Öncü Faktör)': k,
+                    'Sharpe İvmesi': round(val, 2),
+                    'Dinamik Dikkat Ağırlığı (%)': round(w, 1),
+                    'Net Katkı': round(contribution, 3)
+                })
+
+            breakdown_df = pd.DataFrame(breakdown).sort_values('Dinamik Dikkat Ağırlığı (%)', ascending=False)
+            total_score = sum(factors_dict.get(k, 0.0) * (dyn_weights[k] / 100.0) for k in dyn_weights)
+            final_score = np.tanh(total_score / 0.7) * 100
+
+            if final_score > 15:
+                msg = "🚀 GÜÇLÜ BOĞA TRENDİ (Alıcılar ve Likidite Piyasayı Sürüklüyor)"
+                css = "div-bull"
+            elif final_score < -15:
+                msg = "🩸 GÜÇLÜ AYI BASKISI (Satıcılar ve Makro Fren Üstün)"
+                css = "div-bear"
+            else:
+                msg = "⚪ DENGELİ KONSOLİDASYON (Piyasa Yönsüz)"
+                css = "div-neutral"
+
+            return {'score': final_score, 'table': breakdown_df, 'msg': msg, 'css': css}
+
+        # GÜMÜŞ MATRİSİ
+        xag_factors = {
+            'XAG_Mom': xag_mom, 'XME_GLD_Ratio': xme_gld, 'Copper_Gold': copper_gold,
+            'SLV_GLD_Beta': slv_gld, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_mom,
+            'BTC_Liquidity': btc_mom, 'Gold_Oil': gold_oil, 'Credit_Risk_Spread': credit_risk, 'Bond_Yield_Pressure': yield_mom
         }
+        xag_base = {
+            'XAG_Mom': 30.0, 'XME_GLD_Ratio': 25.0, 'Copper_Gold': 20.0,
+            'SLV_GLD_Beta': 10.0, 'Real_Yield_Shock': 10.0, 'DXY_Pressure': -15.0,
+            'BTC_Liquidity': 5.0, 'Gold_Oil': 5.0, 'Credit_Risk_Spread': 5.0, 'Bond_Yield_Pressure': -5.0
+        }
+        scores['XAG'] = build_result(xag_base, xag_factors, xag_mom)
+
+        # ALTIN MATRİSİ
+        xau_factors = {
+            'XAU_Mom': xau_mom, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_mom,
+            'Bond_Yield_Pressure': yield_mom, 'Gold_Oil': gold_oil, 'SLV_GLD_Beta': slv_gld,
+            'Credit_Flight_Safety': credit_flight, 'Carry_Trade': jpy_mom, 'Copper_Gold': copper_gold, 'BTC_Liquidity': btc_mom
+        }
+        xau_base = {
+            'XAU_Mom': 30.0, 'Real_Yield_Shock': 25.0, 'DXY_Pressure': -20.0,
+            'Bond_Yield_Pressure': -15.0, 'Gold_Oil': 15.0, 'SLV_GLD_Beta': 10.0,
+            'Credit_Flight_Safety': -5.0, 'Carry_Trade': 5.0, 'Copper_Gold': -3.0, 'BTC_Liquidity': -2.0
+        }
+        scores['XAU'] = build_result(xau_base, xau_factors, xau_mom)
+
+        # NASDAQ MATRİSİ
+        nq_factors = {
+            'NQ_Mom': nq_mom, 'Credit_Risk_Spread': credit_risk, 'Sector_Rotation': sector_rot,
+            'BTC_Liquidity': btc_mom, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_mom,
+            'Carry_Trade': jpy_mom, 'DXY_Pressure': dxy_mom, 'Market_Breadth': breadth, 'Copper_Gold': copper_gold
+        }
+        nq_base = {
+            'NQ_Mom': 30.0, 'Credit_Risk_Spread': 15.0, 'Sector_Rotation': 15.0,
+            'BTC_Liquidity': 15.0, 'Real_Yield_Shock': -15.0, 'Bond_Yield_Pressure': -15.0,
+            'Carry_Trade': 10.0, 'DXY_Pressure': -10.0, 'Market_Breadth': -5.0, 'Copper_Gold': 5.0
+        }
+        scores['NQ'] = build_result(nq_base, nq_factors, nq_mom)
+
+        # S&P 500 MATRİSİ
+        spx_factors = {
+            'SPX_Mom': spx_mom, 'Credit_Risk_Spread': credit_risk, 'Credit_Flight_Safety': credit_flight,
+            'Sector_Rotation': sector_rot, 'BTC_Liquidity': btc_mom, 'Real_Yield_Shock': real_yield_shock,
+            'Bond_Yield_Pressure': yield_mom, 'Carry_Trade': jpy_mom, 'DXY_Pressure': dxy_mom, 'Market_Breadth': breadth
+        }
+        spx_base = {
+            'SPX_Mom': 30.0, 'Credit_Risk_Spread': 20.0, 'Credit_Flight_Safety': 15.0,
+            'Sector_Rotation': 15.0, 'BTC_Liquidity': 10.0, 'Real_Yield_Shock': -10.0,
+            'Bond_Yield_Pressure': -10.0, 'Carry_Trade': 10.0, 'DXY_Pressure': -10.0, 'Market_Breadth': -5.0
+        }
+        scores['SPX'] = build_result(spx_base, spx_factors, spx_mom)
+
+        return scores
 
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = SharpeMacroEngine()
+engine = NativeStreamMacroEngine()
 
-st.title("🏛️ TIER-1 SHARPE TERMINAL (v18.0)")
-st.markdown('<span class="status-badge">⚡ SHARPE VOLATILITY-ADJUSTED MOMENTUM ENGINE</span>', unsafe_allow_html=True)
-st.caption("Sıfır Tabanlı Mutlak İvme + Şok Ağırlıklandırması (Asla Ralliyi Ters Okumaz)")
+st.title("🏛️ TIER-1 MASTER TERMINAL (v19.0)")
+st.markdown('<span class="status-badge">⚡ ZERO-FLATLINE NATIVE STREAM ENGINE</span>', unsafe_allow_html=True)
+st.caption("Bağımsız Canlı Mum Akışı | Kusursuz Sharpe İvmesi & Dinamik Şok Matrisi")
 
 try:
-    raw_df = engine.fetch_all_data()
+    native_data = engine.fetch_all_native_data()
     
-    if raw_df.empty or len(raw_df) < 3:
+    if not native_data or len(native_data) < 3:
         st.warning("Veriler güncelleniyor, lütfen bekleyin...")
     else:
-        features_df = engine.calculate_sharpe_features(raw_df)
-        sharpe_scores = engine.calculate_volatility_normalized_scores(features_df)
+        results = engine.compute_all_asset_scores(native_data)
 
         tab_spx, tab_nq, tab_xau, tab_xag = st.tabs(["S&P 500 (ES=F)", "NASDAQ (NQ=F)", "ALTIN (GC=F)", "GÜMÜŞ (SI=F)"])
 
@@ -269,16 +287,16 @@ try:
             st.dataframe(table, use_container_width=True, hide_index=True)
 
         with tab_spx:
-            render_view(engine.compute_asset_score(sharpe_scores, raw_df, 'SPX'), "S&P 500 (ES=F)")
+            render_view(results.get('SPX'), "S&P 500 (ES=F)")
 
         with tab_nq:
-            render_view(engine.compute_asset_score(sharpe_scores, raw_df, 'NQ'), "NASDAQ (NQ=F)")
+            render_view(results.get('NQ'), "NASDAQ (NQ=F)")
 
         with tab_xau:
-            render_view(engine.compute_asset_score(sharpe_scores, raw_df, 'XAU'), "ALTIN (GC=F)")
+            render_view(results.get('XAU'), "ALTIN (GC=F)")
 
         with tab_xag:
-            render_view(engine.compute_asset_score(sharpe_scores, raw_df, 'XAG'), "GÜMÜŞ (SI=F)")
+            render_view(results.get('XAG'), "GÜMÜŞ (SI=F)")
 
 except Exception as e:
     st.error(f"Sistem Hatası: {str(e)}")
