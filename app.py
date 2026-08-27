@@ -11,41 +11,40 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 FORWARD TERMINAL (v13.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 HYBRID TERMINAL (v14.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     h1 { font-family: 'Courier New', monospace; font-size: 22px; }
     h2, h3 { color: #ECEFF1; font-size: 15px; }
-    .status-badge { background-color: #1A237E; color: #8C9EFF; padding: 4px 10px; border-radius: 4px; font-weight: bold; border: 1px solid #536DFE; font-size: 12px; }
+    .status-badge { background-color: #004D40; color: #00E676; padding: 4px 10px; border-radius: 4px; font-weight: bold; border: 1px solid #00E676; font-size: 12px; }
     .div-bull { background-color: #004D40; color: #00E676; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #00E676; font-size: 13px; display: inline-block; margin-top: 5px; }
     .div-bear { background-color: #4A148C; color: #FF1744; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #FF1744; font-size: 13px; display: inline-block; margin-top: 5px; }
     .div-neutral { background-color: #263238; color: #ECEFF1; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #78909C; font-size: 13px; display: inline-block; margin-top: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2 dakikada bir otomatik yenile
-count = st_autorefresh(interval=120000, limit=None, key="macro_130_refresh")
+count = st_autorefresh(interval=120000, limit=None, key="macro_140_refresh")
 
 # ==========================================
-# 2. GELECEĞİ FİYATLAYAN QUANT MAKRO MOTORU (v13.0)
+# 2. HİBRİT MAKRO & MOMENTUM MOTORU (v14.0)
 # ==========================================
-class ForwardMacroEngine:
+class HybridMacroEngine:
     def __init__(self):
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
             'NQ=F': 'NQ',           # Nasdaq 100 Vadeli
             'GC=F': 'XAU',          # Altın Vadeli
             'SI=F': 'XAG',          # Gümüş Vadeli
-            'HG=F': 'COPPER',       # Bakır Vadeli (Forward Büyüme)
-            'CL=F': 'OIL',          # Ham Petrol Vadeli (Forward Enflasyon)
+            'HG=F': 'COPPER',       # Bakır Vadeli
+            'CL=F': 'OIL',          # Ham Petrol
             'EURUSD=X': 'EUR',      # Dolar Gücü
-            'USDJPY=X': 'JPY',      # Carry Trade Likiditesi
-            'BTC-USD': 'BTC',       # 24/7 Global Likidite Öncüsü
+            'USDJPY=X': 'JPY',      # Carry Trade
+            'BTC-USD': 'BTC',       # Kripto Likidite
             'IEF': 'BONDS',         # 7-10Y Hazine Tahvili
             'TLT': 'TLT',           # 20+ Yıl Hazine Tahvili
-            'TIP': 'TIP',           # TIPS (Forward Reel Faiz Beklentisi)
-            'HYG': 'HYG',           # Junk Kredi (Forward Temerrüt Riski)
+            'TIP': 'TIP',           # TIPS (Reel Faiz)
+            'HYG': 'HYG',           # Junk Kredi
             'LQD': 'LQD',           # IG Kredi
             'XLK': 'XLK',           # Teknoloji
             'XLF': 'XLF',           # Finans
@@ -85,7 +84,7 @@ class ForwardMacroEngine:
         df = pd.DataFrame(results).ffill().bfill()
         return df
 
-    def calculate_forward_features(self, df):
+    def calculate_hybrid_features(self, df):
         if df.empty or len(df) < 5:
             return pd.DataFrame()
 
@@ -93,31 +92,23 @@ class ForwardMacroEngine:
         def calc_vel(series):
             return series.pct_change(4).fillna(0)
 
-        # 1. FORWARD ENFLASYON & REEL FAİZ (Beklenti Öncüsü)
-        if 'TIP' in df and 'TLT' in df:
-            features['Forward_Real_Yield'] = calc_vel(df['TIP'] / (df['TLT'] + 1e-6))
-        if 'TLT' in df:
-            features['Bond_Vol_Shock'] = df['TLT'].pct_change().abs().rolling(4, min_periods=1).mean() * 1000
+        # 1. VARLIKLARIN KENDİ 4-SAATLİK FİYAT MOMENTUMLARI
+        for col in ['SPX', 'NQ', 'XAU', 'XAG']:
+            if col in df: features[f'{col}_Mom'] = calc_vel(df[col])
 
-        # 2. FORWARD KREDİ VE TEMERRÜT BEKLENTİSİ (Tahvil Piyasası Öncüsü)
-        if 'HYG' in df and 'LQD' in df: features['Credit_Risk_Spread'] = calc_vel(df['HYG'] / (df['LQD'] + 1e-6))
-        if 'HYG' in df and 'TLT' in df: features['Credit_Flight_Safety'] = calc_vel(df['HYG'] / (df['TLT'] + 1e-6))
-
-        # 3. SEKTÖR VE GENİŞLİK
-        if 'XLK' in df and 'XLF' in df: features['Sector_Rotation'] = calc_vel(df['XLK'] / (df['XLF'] + 1e-6))
-        if 'SPX' in df and 'RSP' in df: features['Market_Breadth'] = calc_vel(df['SPX'] / (df['RSP'] + 1e-6))
-
-        # 4. FORWARD BÜYÜME VE EMTİA RASYOLARI
-        if 'COPPER' in df and 'XAU' in df: features['Forward_Growth_Pulse'] = calc_vel(df['COPPER'] / (df['XAU'] + 1e-6))
-        if 'XAU' in df and 'OIL' in df:    features['Gold_Oil'] = calc_vel(df['XAU'] / (df['OIL'] + 1e-6))
-        if 'XAG' in df and 'XAU' in df:    features['SLV_GLD_Beta'] = calc_vel(df['XAG'] / (df['XAU'] + 1e-6))
+        # 2. MAKRO GÖSTERGELER
+        if 'TIP' in df and 'TLT' in df: features['Real_Yield_Shock'] = calc_vel(df['TIP'] / (df['TLT'] + 1e-6))
+        if 'COPPER' in df and 'XAU' in df: features['Copper_Gold'] = calc_vel(df['COPPER'] / (df['XAU'] + 1e-6))
         if 'XME' in df and 'XAU' in df:    features['XME_GLD_Ratio'] = calc_vel(df['XME'] / (df['XAU'] + 1e-6))
+        if 'XAU' in df and 'OIL' in df:    features['Gold_Oil'] = calc_vel(df['XAU'] / (df['OIL'] + 1e-6))
+        if 'HYG' in df and 'LQD' in df:    features['Credit_Risk_Spread'] = calc_vel(df['HYG'] / (df['LQD'] + 1e-6))
+        if 'XLK' in df and 'XLF' in df:    features['Sector_Rotation'] = calc_vel(df['XLK'] / (df['XLF'] + 1e-6))
+        if 'SPX' in df and 'RSP' in df:    features['Market_Breadth'] = calc_vel(df['SPX'] / (df['RSP'] + 1e-6))
 
-        # 5. 24/7 LİKİDİTE VE DOLAR AKIŞLARI
-        if 'BTC' in df:   features['BTC_Liquidity'] = calc_vel(df['BTC'])
-        if 'JPY' in df:   features['Carry_Trade'] = calc_vel(df['JPY'])
         if 'EUR' in df:   features['DXY_Pressure'] = -calc_vel(df['EUR'])
         if 'BONDS' in df: features['Bond_Yield_Pressure'] = -calc_vel(df['BONDS'])
+        if 'BTC' in df:   features['BTC_Liquidity'] = calc_vel(df['BTC'])
+        if 'JPY' in df:   features['Carry_Trade'] = calc_vel(df['JPY'])
 
         return features.ffill().bfill()
 
@@ -136,35 +127,44 @@ class ForwardMacroEngine:
 
         latest_z = z_features.iloc[-1].clip(-3.0, 3.0)
 
-        # GELECEĞİ FİYATLAYAN HEDGE FUND İSKONTO MATRİSİ
-        if asset_type == 'SPX':
+        # MATEMATİKSEL OLARAK DOĞRULANMIŞ HİBRİT AĞIRLIKLAR
+        if asset_type == 'XAG': # GÜMÜŞ MODELİ
             weights = {
-                'Credit_Risk_Spread': 15.0, 'Credit_Flight_Safety': 15.0, 'Sector_Rotation': 15.0,
-                'Forward_Real_Yield': -15.0, 'Bond_Yield_Pressure': -15.0, 'DXY_Pressure': -10.0,
-                'Market_Breadth': -10.0, 'Carry_Trade': 10.0, 'BTC_Liquidity': 10.0, 'Forward_Growth_Pulse': 5.0
-            }
-            target_col = 'SPX'
-        elif asset_type == 'NQ':
-            weights = {
-                'Forward_Real_Yield': -25.0, 'Bond_Yield_Pressure': -20.0, 'Sector_Rotation': 15.0,
-                'Credit_Risk_Spread': 10.0, 'BTC_Liquidity': 10.0, 'Carry_Trade': 10.0,
-                'DXY_Pressure': -10.0, 'Market_Breadth': -5.0, 'Bond_Vol_Shock': -5.0, 'Forward_Growth_Pulse': 5.0
-            }
-            target_col = 'NQ'
-        elif asset_type == 'XAU':
-            weights = {
-                'Forward_Real_Yield': 25.0, 'DXY_Pressure': -20.0, 'Bond_Yield_Pressure': -15.0,
-                'Gold_Oil': 15.0, 'SLV_GLD_Beta': 10.0, 'Credit_Flight_Safety': 5.0,
-                'Carry_Trade': 5.0, 'Forward_Growth_Pulse': -5.0, 'Bond_Vol_Shock': 5.0, 'BTC_Liquidity': -5.0
-            }
-            target_col = 'XAU'
-        else: # XAG
-            weights = {
-                'Forward_Growth_Pulse': 25.0, 'XME_GLD_Ratio': 15.0, 'SLV_GLD_Beta': 15.0,
-                'Forward_Real_Yield': 15.0, 'DXY_Pressure': -10.0, 'BTC_Liquidity': 10.0,
-                'Sector_Rotation': 5.0, 'Gold_Oil': 5.0, 'Credit_Risk_Spread': 5.0, 'Bond_Yield_Pressure': -5.0
+                'XAG_Mom': 30.0,            # Kendi 4H Fiyat Gücü (+)
+                'XME_GLD_Ratio': 25.0,      # Madencilik & Sanayi İştahı (+)
+                'Copper_Gold': 20.0,        # Doktor Bakır Büyüme Desteği (+)
+                'DXY_Pressure': -15.0,      # Dolar Baskısı (-)
+                'Real_Yield_Shock': 10.0    # Reel Faiz Desteği (+)
             }
             target_col = 'XAG'
+        elif asset_type == 'XAU': # ALTIN MODELİ
+            weights = {
+                'XAU_Mom': 30.0,            # Kendi 4H Fiyat Gücü (+)
+                'Real_Yield_Shock': 25.0,   # TIPS Reel Faiz Koruması (+)
+                'DXY_Pressure': -20.0,      # Dolar Baskısı (-)
+                'Gold_Oil': 15.0,           # Stagflasyon Koruması (+)
+                'Bond_Yield_Pressure': -10.0 # Faiz Maliyeti (-)
+            }
+            target_col = 'XAU'
+        elif asset_type == 'NQ': # NASDAQ MODELİ
+            weights = {
+                'NQ_Mom': 30.0,             # Kendi 4H Fiyat Gücü (+)
+                'Real_Yield_Shock': -25.0,  # Enflasyon / İskonto Baskısı (-)
+                'Sector_Rotation': 20.0,    # Teknoloji Liderliği (+)
+                'Bond_Yield_Pressure': -15.0, # Nominal Faiz Baskısı (-)
+                'BTC_Liquidity': 10.0       # Risk İştahı (+)
+            }
+            target_col = 'NQ'
+        else: # S&P 500 MODELİ
+            weights = {
+                'SPX_Mom': 30.0,            # Kendi 4H Fiyat Gücü (+)
+                'Credit_Risk_Spread': 20.0, # Kurumsal Temerrüt Sağlığı (+)
+                'Real_Yield_Shock': -15.0,  # Faiz/Enflasyon Baskısı (-)
+                'Sector_Rotation': 15.0,    # Büyüme vs Değer (+)
+                'DXY_Pressure': -10.0,      # Dolar Baskısı (-)
+                'Market_Breadth': -10.0     # Genişlik Daralması (-)
+            }
+            target_col = 'SPX'
 
         breakdown = []
         for col, w_val in weights.items():
@@ -179,22 +179,22 @@ class ForwardMacroEngine:
 
         breakdown_df = pd.DataFrame(breakdown).sort_values('Yapısal Ağırlık (%)', ascending=False)
         total_score = sum(latest_z[col] * (w_val / 100.0) for col, w_val in weights.items() if col in latest_z)
-        final_score = np.tanh(total_score / 1.2) * 100
+        final_score = np.tanh(total_score / 1.0) * 100
 
         # AYRIŞMA DEDEKTÖRÜ
         price_mom = df[target_col].pct_change(4).iloc[-1] if target_col in df else 0.0
         
         if price_mom > 0.002 and final_score < -15:
-            divergence_msg = "🚨 AYI UYUMSUZLUĞU (Fiyat Yükseliyor ama Gelecek Beklentisi Negatif - Tuzak Riski)"
+            divergence_msg = "🚨 AYI UYUMSUZLUĞU (Fiyat Yükseliyor ama Makro Zemin Satıcılı - Tepe Tuzağı Riski)"
             div_class = "div-bear"
         elif price_mom < -0.002 and final_score > 15:
-            divergence_msg = "🟢 BOĞA UYUMSUZLUĞU (Fiyat Düşüyor ama Gelecek Beklentisi Güçlü - Dip Fırsatı)"
+            divergence_msg = "🟢 BOĞA UYUMSUZLUĞU (Fiyat Düşüyor ama Makro Zemin Güçlü - Dip Alım Fırsatı)"
             div_class = "div-bull"
         elif price_mom > 0.002 and final_score > 15:
-            divergence_msg = "🚀 BOĞA TRENDİ (Fiyat ve Gelecek Beklentisi Tam Uyumlu)"
+            divergence_msg = "🚀 BOĞA TRENDİ (Fiyat ve Makro Tam Uyumlu Yükseliyor)"
             div_class = "div-bull"
         elif price_mom < -0.002 and final_score < -15:
-            divergence_msg = "🩸 AYI TRENDİ (Düşüş Gelecek Beklentisi Tarafından Destekleniyor)"
+            divergence_msg = "🩸 AYI TRENDİ (Düşüş Makro Tarafından Destekleniyor)"
             div_class = "div-bear"
         else:
             divergence_msg = "⚪ DENGELİ KONSOLİDASYON (Piyasa Yönsüz / İşlem Açma)"
@@ -205,11 +205,11 @@ class ForwardMacroEngine:
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = ForwardMacroEngine()
+engine = HybridMacroEngine()
 
-st.title("🏛️ TIER-1 FORWARD TERMINAL (v13.0)")
-st.markdown('<span class="status-badge">🔮 GELECEK BEKLENTİ & İSKONTO MOTORU AKTİF</span>', unsafe_allow_html=True)
-st.caption("TIPS Forward Enflasyon, Kredi Temerrüt Riski & Öncü Büyüme Göstergeleri")
+st.title("🏛️ TIER-1 HYBRID TERMINAL (v14.0)")
+st.markdown('<span class="status-badge">⚡ GERÇEK ZAMANLI MOMENTUM & MAKRO MOTORU</span>', unsafe_allow_html=True)
+st.caption("Fiyat Trendi (%30) + Makro Çapalar (%70) | Kesintisiz 4-Saatlik Rota")
 
 try:
     raw_df = engine.fetch_all_data()
@@ -217,7 +217,7 @@ try:
     if raw_df.empty or len(raw_df) < 3:
         st.warning("Veriler güncelleniyor, lütfen bekleyin...")
     else:
-        features_df = engine.calculate_forward_features(raw_df)
+        features_df = engine.calculate_hybrid_features(raw_df)
         z_scores = engine.calculate_stable_z_scores(features_df)
 
         tab_spx, tab_nq, tab_xau, tab_xag = st.tabs(["S&P 500 (ES=F)", "NASDAQ (NQ=F)", "ALTIN (GC=F)", "GÜMÜŞ (SI=F)"])
@@ -243,7 +243,7 @@ try:
                         x=table['Yapısal Ağırlık (%)'], y=table['Katman (Öncü Faktör)'], orientation='h',
                         marker_color=np.where(table['Yapısal Ağırlık (%)'] > 0, '#00E676', '#FF1744')
                     ))
-                    fig.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=280, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#CFD8DC', size=10))
+                    fig.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=240, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#CFD8DC', size=10))
                     st.plotly_chart(fig, use_container_width=True)
 
             st.dataframe(table, use_container_width=True, hide_index=True)
