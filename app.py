@@ -11,11 +11,11 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 MACRO TERMINAL (v12.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 MACRO TERMINAL (v12.5)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    h1 { color: #00E676; font-family: 'Courier New', monospace; font-size: 22px; }
+    h1 { font-family: 'Courier New', monospace; font-size: 22px; }
     h2, h3 { color: #ECEFF1; font-size: 15px; }
     .status-badge { background-color: #1B5E20; color: #00E676; padding: 4px 10px; border-radius: 4px; font-weight: bold; border: 1px solid #00E676; font-size: 12px; }
     .div-bull { background-color: #004D40; color: #00E676; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #00E676; font-size: 13px; display: inline-block; margin-top: 5px; }
@@ -25,12 +25,12 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # 2 dakikada bir otomatik yenile
-count = st_autorefresh(interval=120000, limit=None, key="macro_120_refresh")
+count = st_autorefresh(interval=120000, limit=None, key="macro_125_refresh")
 
 # ==========================================
-# 2. HASSAS KUTUPLU QUANT MOTORU (v12.0)
+# 2. HASSAS KALİBRASYONLU QUANT MOTORU (v12.5)
 # ==========================================
-class PrecisionMacroEngine:
+class CalibratedMacroEngine:
     def __init__(self):
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
@@ -93,7 +93,7 @@ class PrecisionMacroEngine:
         def calc_vel(series):
             return series.pct_change(4).fillna(0)
 
-        # 1. REEL FAİZ (DÜZELTİLDİ: TIP/TLT artışı = Reel Faiz Düşüşü = Altın Boğası)
+        # 1. REEL FAİZ (TIP/TLT)
         if 'TIP' in df and 'TLT' in df:
             features['Real_Yield_Shock'] = calc_vel(df['TIP'] / (df['TLT'] + 1e-6))
         if 'TLT' in df:
@@ -132,37 +132,40 @@ class PrecisionMacroEngine:
     def compute_asset_score(self, z_features, df, asset_type):
         empty_df = pd.DataFrame(columns=['Katman (Makro Faktör)', '4-Saatlik İvme (Z-Score)', 'Yapısal Ağırlık (%)', 'Net Katkı'])
         if z_features.empty:
-            return 0.0, empty_df, "⚪ KONSOLİDASYON"
+            return 0.0, empty_df, "⚪ KONSOLİDASYON", "div-neutral"
 
         latest_z = z_features.iloc[-1].clip(-3.0, 3.0)
 
-        # DÜZELTİLMİŞ KUTUP VE HASSASİYET MATRİSLERİ
+        # KALİBRE EDİLMİŞ HEDGE FUND MATRİSİ
         if asset_type == 'SPX':
             weights = {
                 'Credit_Risk_Spread': 15.0, 'Credit_Flight_Safety': 15.0, 'Sector_Rotation': 15.0,
-                'Market_Breadth': -10.0, 'Real_Yield_Shock': 10.0, 'Bond_Yield_Pressure': -10.0,
-                'DXY_Pressure': -10.0, 'Carry_Trade': 10.0, 'BTC_Liquidity': 10.0, 'Copper_Gold': 5.0
+                'Real_Yield_Shock': -15.0,  # Enflasyon/Faiz Baskısı Hisselere Negatif (-)
+                'Bond_Yield_Pressure': -15.0, 'DXY_Pressure': -10.0, 'Market_Breadth': -10.0,
+                'Carry_Trade': 10.0, 'BTC_Liquidity': 10.0, 'Copper_Gold': 5.0
             }
             target_col = 'SPX'
         elif asset_type == 'NQ':
             weights = {
-                'Real_Yield_Shock': 20.0, 'Sector_Rotation': 20.0, 'Bond_Yield_Pressure': -15.0,
+                'Real_Yield_Shock': -25.0,   # Enflasyon / İskonto Baskısı Teknolojiye Sert Negatif (-)
+                'Bond_Yield_Pressure': -20.0, # Nominal Faiz Baskısı (-)
+                'Sector_Rotation': 15.0,
                 'Credit_Risk_Spread': 10.0, 'BTC_Liquidity': 10.0, 'Carry_Trade': 10.0,
                 'DXY_Pressure': -10.0, 'Market_Breadth': -5.0, 'Bond_Vol_Shock': -5.0, 'Copper_Gold': 5.0
             }
             target_col = 'NQ'
         elif asset_type == 'XAU':
-            # DÜZELTİLDİ: Real_Yield_Shock POZİTİF (+25.0) yapıldı
             weights = {
-                'Real_Yield_Shock': 25.0, 'DXY_Pressure': -20.0, 'Bond_Yield_Pressure': -15.0,
-                'Gold_Oil': 10.0, 'SLV_GLD_Beta': 10.0, 'Credit_Flight_Safety': 5.0,
+                'Real_Yield_Shock': 25.0,    # Enflasyon / Reel Faiz Düşüşü Altına Güçlü Pozitif (+)
+                'DXY_Pressure': -20.0, 'Bond_Yield_Pressure': -15.0,
+                'Gold_Oil': 15.0, 'SLV_GLD_Beta': 10.0, 'Credit_Flight_Safety': 5.0,
                 'Carry_Trade': 5.0, 'Copper_Gold': -5.0, 'Bond_Vol_Shock': 5.0, 'BTC_Liquidity': -5.0
             }
             target_col = 'XAU'
         else: # XAG
             weights = {
                 'Copper_Gold': 25.0, 'XME_GLD_Ratio': 15.0, 'SLV_GLD_Beta': 15.0,
-                'Real_Yield_Shock': 10.0, 'DXY_Pressure': -10.0, 'BTC_Liquidity': 10.0,
+                'Real_Yield_Shock': 15.0, 'DXY_Pressure': -10.0, 'BTC_Liquidity': 10.0,
                 'Sector_Rotation': 5.0, 'Gold_Oil': 5.0, 'Credit_Risk_Spread': 5.0, 'Bond_Yield_Pressure': -5.0
             }
             target_col = 'XAG'
@@ -182,21 +185,19 @@ class PrecisionMacroEngine:
         total_score = sum(latest_z[col] * (w_val / 100.0) for col, w_val in weights.items() if col in latest_z)
         final_score = np.tanh(total_score / 1.2) * 100
 
-        # ==========================================
-        # AYRIŞMA VE UYUMSUZLUK DEDEKTÖRÜ
-        # ==========================================
+        # AYRIŞMA DEDEKTÖRÜ
         price_mom = df[target_col].pct_change(4).iloc[-1] if target_col in df else 0.0
         
-        if price_mom > 0.002 and final_score < -10:
-            divergence_msg = "🚨 AYI UYUMSUZLUĞU (Fiyat Yükseliyor ama Makro Zemin Negatif - Fakeout Riski)"
+        if price_mom > 0.002 and final_score < -15:
+            divergence_msg = "🚨 AYI UYUMSUZLUĞU (Fiyat Yükseliyor ama Makro Zemin Satıcılı - Tepe Tuzağı Riski)"
             div_class = "div-bear"
-        elif price_mom < -0.002 and final_score > 10:
+        elif price_mom < -0.002 and final_score > 15:
             divergence_msg = "🟢 BOĞA UYUMSUZLUĞU (Fiyat Düşüyor ama Makro Zemin Güçlü - Dip Alım Fırsatı)"
             div_class = "div-bull"
-        elif price_mom > 0.002 and final_score > 10:
+        elif price_mom > 0.002 and final_score > 15:
             divergence_msg = "🚀 BOĞA TRENDİ (Fiyat ve Makro Tam Uyumlu)"
             div_class = "div-bull"
-        elif price_mom < -0.002 and final_score < -10:
+        elif price_mom < -0.002 and final_score < -15:
             divergence_msg = "🩸 AYI TRENDİ (Düşüş Makro Tarafından Destekleniyor)"
             div_class = "div-bear"
         else:
@@ -208,11 +209,11 @@ class PrecisionMacroEngine:
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = PrecisionMacroEngine()
+engine = CalibratedMacroEngine()
 
-st.title("🏛️ TIER-1 ULTIMATE MACRO TERMINAL (v12.0)")
-st.markdown('<span class="status-badge">⚡ AYRIŞMA (DIVERGENCE) & HASSAS KUTUP MOTORU</span>', unsafe_allow_html=True)
-st.caption("Fiyat vs. Makro Çapraz Ayrışma Dedektörü | 4-Saatlik Gerçek Rota")
+st.title("🏛️ TIER-1 ULTIMATE MACRO TERMINAL (v12.5)")
+st.markdown('<span class="status-badge">⚡ HASSAS MAKRO KALİBRASYON AKTİF</span>', unsafe_allow_html=True)
+st.caption("Reel Faiz, Kredi Spreadleri & 4-Saatlik Gerçek Makro Yön")
 
 try:
     raw_df = engine.fetch_all_data()
@@ -229,7 +230,15 @@ try:
             col1, col2 = st.columns([1, 2])
             with col1:
                 st.markdown(f"### {asset_title} 4H Rotası")
-                c = "#00E676" if score > 0 else "#FF1744"
+                
+                # RENK DÜZELTMESİ: Nötr bölge [-15, +15] artık BEYAZ!
+                if score > 15:
+                    c = "#00E676"  # Gerçek Boğa (Yeşil)
+                elif score < -15:
+                    c = "#FF1744"  # Gerçek Ayı (Kırmızı)
+                else:
+                    c = "#ECEFF1"  # Nötr / Dengeli (Beyaz)
+
                 st.markdown(f"<h1 style='color: {c}; font-size: 55px; margin:0;'>{score:.1f}</h1>", unsafe_allow_html=True)
                 st.markdown(f'<div class="{div_class}">{div_msg}</div>', unsafe_allow_html=True)
             with col2:
@@ -256,7 +265,7 @@ try:
             render_view(score_xau, table_xau, div_xau, class_xau, "ALTIN (GC=F)")
 
         with tab_xag:
-            score_xag, table_xag, div_xag, class_xag = engine.compute_asset_score(z_scores, raw_df, 'XAG')
+            score_xag, table_xag = engine.compute_asset_score(z_scores, raw_df, 'XAG')
             render_view(score_xag, table_xag, div_xag, class_xag, "GÜMÜŞ (SI=F)")
 
 except Exception as e:
