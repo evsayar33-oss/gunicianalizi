@@ -11,26 +11,26 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v20.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v21.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     h1 { font-family: 'Courier New', monospace; font-size: 22px; }
     h2, h3 { color: #ECEFF1; font-size: 15px; }
-    .status-badge { background-color: #1A237E; color: #8C9EFF; padding: 4px 10px; border-radius: 4px; font-weight: bold; border: 1px solid #536DFE; font-size: 12px; }
+    .status-badge { background-color: #004D40; color: #00E676; padding: 4px 10px; border-radius: 4px; font-weight: bold; border: 1px solid #00E676; font-size: 12px; }
     .div-bull { background-color: #004D40; color: #00E676; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #00E676; font-size: 13px; display: inline-block; margin-top: 5px; }
     .div-bear { background-color: #4A148C; color: #FF1744; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #FF1744; font-size: 13px; display: inline-block; margin-top: 5px; }
     .div-neutral { background-color: #263238; color: #ECEFF1; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #78909C; font-size: 13px; display: inline-block; margin-top: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2 dakikada bir otomatik yenileme
-count = st_autorefresh(interval=120000, limit=None, key="macro_200_refresh")
+# 2 dakikada bir otomatik yenile
+count = st_autorefresh(interval=120000, limit=None, key="macro_210_refresh")
 
 # ==========================================
-# 2. GRAND MASTER QUANT MAKRO MOTORU (v20.0)
+# 2. ROTASYONEL QUANT MAKRO MOTORU (v21.0)
 # ==========================================
-class GrandMasterMacroEngine:
+class RotationalMacroEngine:
     def __init__(self):
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
@@ -85,18 +85,14 @@ class GrandMasterMacroEngine:
         return series_dict
 
     def calculate_smoothed_sharpe(self, s):
-        """Çoklu-bar EMA süzgeciyle pürüzsüz ve kararlı Sharpe ivmesi hesaplar."""
         if s is None or len(s) < 8:
             return 0.0
         
         pct = s.pct_change().fillna(0)
-        
-        # 4 barlık (Hızlı İvme) ve 12 barlık (Ana Trend) EMA Süzgeci
         ema_fast = pct.ewm(span=4).mean() * 4
         ema_slow = pct.ewm(span=12).mean() * 12
         smooth_mom = (0.7 * ema_fast.iloc[-1]) + (0.3 * ema_slow.iloc[-1])
         
-        # Son 24 barın standart sapması
         vol = pct.tail(24).std()
         if pd.isna(vol) or vol < 1e-5:
             vol = 0.005
@@ -116,7 +112,6 @@ class GrandMasterMacroEngine:
     def compute_all_asset_scores(self, data):
         scores = {}
         
-        # 1. PÜRÜZSÜZ HAM İVMELER
         spx_mom = self.calculate_smoothed_sharpe(data.get('SPX'))
         nq_mom = self.calculate_smoothed_sharpe(data.get('NQ'))
         xau_mom = self.calculate_smoothed_sharpe(data.get('XAU'))
@@ -124,8 +119,8 @@ class GrandMasterMacroEngine:
         
         btc_mom = self.calculate_smoothed_sharpe(data.get('BTC'))
         jpy_mom = self.calculate_smoothed_sharpe(data.get('JPY'))
-        dxy_mom = -self.calculate_smoothed_sharpe(data.get('EUR'))  # EUR Düşüşü = Dolar Artışı
-        yield_mom = -self.calculate_smoothed_sharpe(data.get('BONDS')) # Tahvil Düşüşü = Faiz Artışı
+        dxy_mom = -self.calculate_smoothed_sharpe(data.get('EUR'))
+        yield_mom = -self.calculate_smoothed_sharpe(data.get('BONDS'))
         
         real_yield_shock = self.calculate_smoothed_ratio_sharpe(data.get('TIP'), data.get('TLT'))
         credit_risk = self.calculate_smoothed_ratio_sharpe(data.get('HYG'), data.get('LQD'))
@@ -138,11 +133,7 @@ class GrandMasterMacroEngine:
         slv_gld = self.calculate_smoothed_ratio_sharpe(data.get('XAG'), data.get('XAU'))
         xme_gld = self.calculate_smoothed_ratio_sharpe(data.get('XME'), data.get('XAU'))
 
-        # ==========================================
-        # STABİLİZE HESAPLAMA MOTORU (v20.0)
-        # ==========================================
         def build_result(base_weights, factors_dict):
-            # Kontrollü Dikkat Katsayısı (Aşırı zıplamayı önleyen 1 + |val|^1.0)
             multipliers = {}
             for k, w in base_weights.items():
                 val = abs(factors_dict.get(k, 0.0))
@@ -167,12 +158,10 @@ class GrandMasterMacroEngine:
 
             breakdown_df = pd.DataFrame(breakdown).sort_values('Dinamik Ağırlık (%)', ascending=False)
             total_score = sum(factors_dict.get(k, 0.0) * (dyn_weights[k] / 100.0) for k in dyn_weights)
-            
-            # STABİLİZE TANH: 2.2 Böleni ile Kademeli, Sarsılmaz Yön Eğrisi
-            final_score = np.tanh(total_score / 2.2) * 100
+            final_score = np.tanh(total_score / 1.8) * 100
 
             if final_score > 20:
-                msg = "🚀 GÜÇLÜ BOĞA TRENDİ (Makro Rüzgar Alıcıları Destekliyor)"
+                msg = "🚀 GÜÇLÜ BOĞA TRENDİ (Alıcılar ve Likidite Piyasayı Sürüklüyor)"
                 css = "div-bull"
             elif final_score < -20:
                 msg = "🩸 GÜÇLÜ AYI BASKISI (Satıcılar ve Makro Fren Üstün)"
@@ -183,7 +172,7 @@ class GrandMasterMacroEngine:
 
             return {'score': final_score, 'table': breakdown_df, 'msg': msg, 'css': css}
 
-        # GÜMÜŞ MATRİSİ
+        # GÜMÜŞ (DOKUNULMADI)
         xag_factors = {
             'XAG_Mom': xag_mom, 'XME_GLD_Ratio': xme_gld, 'Copper_Gold': copper_gold,
             'SLV_GLD_Beta': slv_gld, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_mom,
@@ -196,7 +185,7 @@ class GrandMasterMacroEngine:
         }
         scores['XAG'] = build_result(xag_base, xag_factors)
 
-        # ALTIN MATRİSİ
+        # ALTIN (DOKUNULMADI)
         xau_factors = {
             'XAU_Mom': xau_mom, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_mom,
             'Bond_Yield_Pressure': yield_mom, 'Gold_Oil': gold_oil, 'SLV_GLD_Beta': slv_gld,
@@ -209,42 +198,58 @@ class GrandMasterMacroEngine:
         }
         scores['XAU'] = build_result(xau_base, xau_factors)
 
-        # NASDAQ MATRİSİ
-        nq_factors = {
-            'NQ_Mom': nq_mom, 'Credit_Risk_Spread': credit_risk, 'Sector_Rotation': sector_rot,
-            'BTC_Liquidity': btc_mom, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_mom,
-            'Carry_Trade': jpy_mom, 'DXY_Pressure': dxy_mom, 'Market_Breadth': breadth, 'Copper_Gold': copper_gold
-        }
-        nq_base = {
-            'NQ_Mom': 25.0, 'Credit_Risk_Spread': 15.0, 'Sector_Rotation': 15.0,
-            'BTC_Liquidity': 15.0, 'Real_Yield_Shock': 15.0, 'Bond_Yield_Pressure': -15.0,
-            'Carry_Trade': 10.0, 'DXY_Pressure': -10.0, 'Market_Breadth': -5.0, 'Copper_Gold': 5.0
-        }
-        scores['NQ'] = build_result(nq_base, nq_factors)
-
-        # S&P 500 MATRİSİ
+        # ==========================================
+        # S&P 500 VE NASDAQ (YENİ SERMAYE ROTASYONU KALİBRASYONU)
+        # ==========================================
+        # Carry Trade (Yen Fonlaması) ve Kredi İştahı (HYG/TLT) öne çıkarıldı.
         spx_factors = {
-            'SPX_Mom': spx_mom, 'Credit_Risk_Spread': credit_risk, 'Credit_Flight_Safety': credit_flight,
-            'Sector_Rotation': sector_rot, 'BTC_Liquidity': btc_mom, 'Real_Yield_Shock': real_yield_shock,
-            'Bond_Yield_Pressure': yield_mom, 'Carry_Trade': jpy_mom, 'DXY_Pressure': dxy_mom, 'Market_Breadth': breadth
+            'SPX_Mom': spx_mom, 'Carry_Trade': jpy_mom, 'Credit_Flight_Safety': credit_flight,
+            'Sector_Rotation': sector_rot, 'Credit_Risk_Spread': credit_risk, 'BTC_Liquidity': btc_mom,
+            'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_mom, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_mom
         }
         spx_base = {
-            'SPX_Mom': 25.0, 'Credit_Risk_Spread': 20.0, 'Credit_Flight_Safety': 15.0,
-            'Sector_Rotation': 15.0, 'BTC_Liquidity': 10.0, 'Real_Yield_Shock': 10.0,
-            'Bond_Yield_Pressure': -10.0, 'Carry_Trade': 10.0, 'DXY_Pressure': -10.0, 'Market_Breadth': -5.0
+            'SPX_Mom': 30.0,              # Kendi Fiyat Gücü (+)
+            'Carry_Trade': 25.0,          # Dolar/Yen Fonlama Akışı (+)
+            'Credit_Flight_Safety': 20.0, # Tahvilden Hisseye Kaçış (+)
+            'Sector_Rotation': 10.0,      # Sektör Gücü (+)
+            'Credit_Risk_Spread': 5.0,    # Temerrüt Sağlığı (+)
+            'BTC_Liquidity': 5.0,         # Risk İştahı (+)
+            'Copper_Gold': 5.0,           # Büyüme (+)
+            'DXY_Pressure': -5.0,         # Dolar Freni (-)
+            'Real_Yield_Shock': -5.0,     # Reel Faiz Freni (-)
+            'Bond_Yield_Pressure': -5.0   # Nominal Faiz Freni (-)
         }
         scores['SPX'] = build_result(spx_base, spx_factors)
+
+        nq_factors = {
+            'NQ_Mom': nq_mom, 'Carry_Trade': jpy_mom, 'Credit_Flight_Safety': credit_flight,
+            'Sector_Rotation': sector_rot, 'Credit_Risk_Spread': credit_risk, 'BTC_Liquidity': btc_mom,
+            'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_mom, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_mom
+        }
+        nq_base = {
+            'NQ_Mom': 30.0,               # Kendi Fiyat Gücü (+)
+            'Carry_Trade': 25.0,          # Tech Fonlama Akışı (+)
+            'Credit_Flight_Safety': 15.0, # Risk İştahı (+)
+            'Sector_Rotation': 15.0,      # Teknoloji Liderliği (+)
+            'Credit_Risk_Spread': 5.0,    # Temerrüt Sağlığı (+)
+            'BTC_Liquidity': 5.0,         # Likidite (+)
+            'Copper_Gold': 5.0,           # Büyüme (+)
+            'DXY_Pressure': -5.0,         # Dolar Freni (-)
+            'Real_Yield_Shock': -5.0,     # Reel Faiz Freni (-)
+            'Bond_Yield_Pressure': -5.0   # Faiz Freni (-)
+        }
+        scores['NQ'] = build_result(nq_base, nq_factors)
 
         return scores
 
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = GrandMasterMacroEngine()
+engine = RotationalMacroEngine()
 
-st.title("🏛️ TIER-1 MASTER TERMINAL (v20.0)")
-st.markdown('<span class="status-badge">🛡️ GRAND MASTER STABILIZED REGIME ENGINE</span>', unsafe_allow_html=True)
-st.caption("Pürüzsüz Çoklu-Bar EMA İvmesi & 4-Saatlik Sarsılmaz Karar Dengesi")
+st.title("🏛️ TIER-1 MASTER TERMINAL (v21.0)")
+st.markdown('<span class="status-badge">⚡ KÜRESEL SERMAYE ROTASYONU & ÇAPRAZ VARLIK MOTORU</span>', unsafe_allow_html=True)
+st.caption("Emtia Düşüşü vs. Hisse Senedi Yükselişini Eşzamanlı Ayrıştıran Akıllı Model")
 
 try:
     native_data = engine.fetch_all_native_data()
@@ -266,13 +271,12 @@ try:
             with col1:
                 st.markdown(f"### {asset_title} 4H Rotası")
                 
-                # Nötr bölge [-20, +20] BEYAZ!
                 if score > 20:
-                    c = "#00E676"  # Güçlü Boğa (Yeşil)
+                    c = "#00E676"  # Yeşil (Boğa)
                 elif score < -20:
-                    c = "#FF1744"  # Güçlü Ayı (Kırmızı)
+                    c = "#FF1744"  # Kırmızı (Ayı)
                 else:
-                    c = "#ECEFF1"  # Dengeli Konsolidasyon (Beyaz)
+                    c = "#ECEFF1"  # Beyaz (Nötr)
 
                 st.markdown(f"<h1 style='color: {c}; font-size: 55px; margin:0;'>{score:.1f}</h1>", unsafe_allow_html=True)
                 st.markdown(f'<div class="{div_class}">{div_msg}</div>', unsafe_allow_html=True)
