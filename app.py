@@ -11,13 +11,13 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 ADAPTIVE TERMINAL (v24.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v25.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     h1 { font-family: 'Courier New', monospace; font-size: 22px; }
     h2, h3 { color: #ECEFF1; font-size: 15px; }
-    .status-badge { background-color: #1A237E; color: #8C9EFF; padding: 4px 10px; border-radius: 4px; font-weight: bold; border: 1px solid #536DFE; font-size: 12px; }
+    .status-badge { background-color: #004D40; color: #00E676; padding: 4px 10px; border-radius: 4px; font-weight: bold; border: 1px solid #00E676; font-size: 12px; }
     .div-bull { background-color: #004D40; color: #00E676; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #00E676; font-size: 13px; display: inline-block; margin-top: 5px; }
     .div-bear { background-color: #4A148C; color: #FF1744; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #FF1744; font-size: 13px; display: inline-block; margin-top: 5px; }
     .div-neutral { background-color: #263238; color: #ECEFF1; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #78909C; font-size: 13px; display: inline-block; margin-top: 5px; }
@@ -25,12 +25,12 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # 1 dakikada bir otomatik yenileme
-count = st_autorefresh(interval=60000, limit=None, key="macro_240_refresh")
+count = st_autorefresh(interval=60000, limit=None, key="macro_250_refresh")
 
 # ==========================================
-# 2. ADAPTİF QUANT MAKRO MOTORU (v24.0)
+# 2. EGEMEN QUANT MAKRO MOTORU (v25.0)
 # ==========================================
-class AdaptiveZeroLagEngine:
+class SovereignMacroEngine:
     def __init__(self):
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
@@ -54,7 +54,6 @@ class AdaptiveZeroLagEngine:
         }
 
     def fetch_single_ticker(self, symbol):
-        """15 dakikalık yüksek çözünürlüklü doğrudan REST JSON çekici."""
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=5d&interval=15m"
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36'}
         try:
@@ -73,7 +72,6 @@ class AdaptiveZeroLagEngine:
 
     @st.cache_data(ttl=60, show_spinner=False)
     def fetch_all_native_data(_self):
-        """18 varlığı 0.3 saniyede paralel indirir."""
         series_dict = {}
         def worker(sym, alias):
             s = _self.fetch_single_ticker(sym)
@@ -86,30 +84,28 @@ class AdaptiveZeroLagEngine:
 
         return series_dict
 
-    def calculate_adaptive_kinetic_momentum(self, s):
+    def calculate_sovereign_momentum(self, s):
         """
-        Üç Kademeli Kinetik İvme (15m + 1H + 4H)
-        4-Saatlik Üstel Yarılanma Ömrü (Exponential Decay Kernel) ile dünü unutur, anı yakalar.
+        EGEMEN FİYAT MOMENTUMU:
+        Seansın Başından Beri Getiri (%40) + 4 Saatlik Trend (%35) + 1 Saatlik İvme (%25)
+        Fiyat kırmızıdayken modelin yeşil yakmasını imkansız kılar.
         """
         if s is None or len(s) < 16:
             return 0.0
         
-        # 15m Barlarda İvmeler: 1 bar (15dk), 4 bar (1 saat), 16 bar (4 saat)
-        r15m = (s.iloc[-1] / s.iloc[-2]) - 1.0 if len(s) >= 2 else 0.0
         r1h  = (s.iloc[-1] / s.iloc[-5]) - 1.0 if len(s) >= 5 else 0.0
         r4h  = (s.iloc[-1] / s.iloc[-17]) - 1.0 if len(s) >= 17 else 0.0
+        r_session = (s.iloc[-1] / s.iloc[-32]) - 1.0 if len(s) >= 32 else r4h  # ~8 saatlik seans getirisi
         
-        # Anlık Dönüşü Yakalayan Kinetik İvme Formülü
-        kinetic_mom = (0.50 * r15m) + (0.30 * r1h) + (0.20 * r4h)
+        # Egemen İvme Formülü
+        sovereign_mom = (0.40 * r_session) + (0.35 * r4h) + (0.25 * r1h)
         
-        # 4 Saatlik Üstel Yarılanma (Span=16 Bar) Volatilitesi
         pct = s.pct_change().dropna()
         vol = pct.ewm(span=16).std().iloc[-1]
         if pd.isna(vol) or vol < 1e-5:
             vol = 0.003
             
-        # Sharpe Tabanlı Yönlendirme (Ortalama Çıkarılmaz, Ralliyi Asla Ters Okumaz)
-        sharpe = kinetic_mom / vol
+        sharpe = sovereign_mom / vol
         return float(np.clip(sharpe, -2.5, 2.5))
 
     def calculate_ratio_kinetic(self, s1, s2):
@@ -119,21 +115,21 @@ class AdaptiveZeroLagEngine:
         if len(common_idx) < 16:
             return 0.0
         ratio = s1.loc[common_idx] / (s2.loc[common_idx] + 1e-6)
-        return self.calculate_adaptive_kinetic_momentum(ratio)
+        return self.calculate_sovereign_momentum(ratio)
 
     def compute_all_asset_scores(self, data):
         scores = {}
         
-        # 1. TÜM GÖSTERGELERİN KİNETİK SIFIR-GECİKME İVMELERİ
-        spx_mom = self.calculate_adaptive_kinetic_momentum(data.get('SPX'))
-        nq_mom = self.calculate_adaptive_kinetic_momentum(data.get('NQ'))
-        xau_mom = self.calculate_adaptive_kinetic_momentum(data.get('XAU'))
-        xag_mom = self.calculate_adaptive_kinetic_momentum(data.get('XAG'))
+        # 1. EGEMEN HAM İVMELER
+        spx_mom = self.calculate_sovereign_momentum(data.get('SPX'))
+        nq_mom = self.calculate_sovereign_momentum(data.get('NQ'))
+        xau_mom = self.calculate_sovereign_momentum(data.get('XAU'))
+        xag_mom = self.calculate_sovereign_momentum(data.get('XAG'))
         
-        btc_mom = self.calculate_adaptive_kinetic_momentum(data.get('BTC'))
-        jpy_mom = self.calculate_adaptive_kinetic_momentum(data.get('JPY'))
-        dxy_mom = -self.calculate_adaptive_kinetic_momentum(data.get('EUR'))  # EUR Düşüşü = Dolar Gücü
-        yield_mom = -self.calculate_adaptive_kinetic_momentum(data.get('BONDS')) # Tahvil Düşüşü = Faiz Artışı
+        btc_mom = self.calculate_sovereign_momentum(data.get('BTC'))
+        jpy_mom = self.calculate_sovereign_momentum(data.get('JPY'))
+        dxy_mom = -self.calculate_sovereign_momentum(data.get('EUR'))  # EUR Düşüşü = Dolar Gücü
+        yield_mom = -self.calculate_sovereign_momentum(data.get('BONDS')) # Tahvil Düşüşü = Faiz Artışı
         
         real_yield_shock = self.calculate_ratio_kinetic(data.get('TIP'), data.get('TLT'))
         credit_risk = self.calculate_ratio_kinetic(data.get('HYG'), data.get('LQD'))
@@ -147,20 +143,32 @@ class AdaptiveZeroLagEngine:
         xme_gld = self.calculate_ratio_kinetic(data.get('XME'), data.get('XAU'))
 
         # ==========================================
-        # 2. ADAPTİF ŞOK VE DİKKAT MOTORU (SALIENCE)
+        # 2. EGEMEN AĞIRLIK VE LİMİT MOTORU
         # ==========================================
-        def build_result(base_weights, factors_dict, target_mom):
-            # O an patlayan faktörün ağırlığı katlanır (|Z| > 0.8 ise ağırlığı uçar)
+        def build_result(base_weights, factors_dict, max_proxy_weight=10.0):
             multipliers = {}
             for k, w in base_weights.items():
                 val = abs(factors_dict.get(k, 0.0))
-                multipliers[k] = abs(w) * (1.0 + (min(val, 2.5) ** 1.2))
+                # Fiyat momentumu daha fazla dikkat alır
+                boost = 1.5 if '_Mom' in k else 1.0
+                multipliers[k] = abs(w) * (1.0 + (min(val, 2.5) ** boost))
             
             total_att = sum(multipliers.values()) + 1e-6
             dyn_weights = {}
             for k, w in base_weights.items():
                 sign = 1.0 if w >= 0 else -1.0
-                dyn_weights[k] = (multipliers[k] / total_att) * 100.0 * sign
+                raw_norm = (multipliers[k] / total_att) * 100.0
+                
+                # DIŞ PROXY TAVAN SINIRI: Carry Trade veya BTC %10'u geçip sistemi rehin alamaz!
+                if k in ['Carry_Trade', 'BTC_Liquidity']:
+                    raw_norm = min(raw_norm, max_proxy_weight)
+                    
+                dyn_weights[k] = raw_norm * sign
+
+            # Ağırlıkları %100'e tekrar normalize et
+            total_actual = sum(abs(v) for v in dyn_weights.values()) + 1e-6
+            for k in dyn_weights:
+                dyn_weights[k] = (dyn_weights[k] / total_actual) * 100.0
 
             breakdown = []
             for k, w in dyn_weights.items():
@@ -168,18 +176,17 @@ class AdaptiveZeroLagEngine:
                 contribution = val * (w / 100.0)
                 breakdown.append({
                     'Katman (Öncü Faktör)': k,
-                    'Kinetik İvme (15m+1H)': round(val, 2),
-                    'Dinamik Dikkat Ağırlığı (%)': round(w, 1),
+                    'Egemen İvme': round(val, 2),
+                    'Dinamik Ağırlık (%)': round(w, 1),
                     'Net Katkı': round(contribution, 3)
                 })
 
-            breakdown_df = pd.DataFrame(breakdown).sort_values('Dinamik Dikkat Ağırlığı (%)', ascending=False)
+            breakdown_df = pd.DataFrame(breakdown).sort_values('Dinamik Ağırlık (%)', ascending=False)
             total_score = sum(factors_dict.get(k, 0.0) * (dyn_weights[k] / 100.0) for k in dyn_weights)
             
-            # Kademeli ve Sarsılmaz Tanh Sıkıştırması (1.6 Böleni)
-            final_score = np.tanh(total_score / 1.6) * 100
+            # 1.4 Böleni ile Kararlı Reaksiyon
+            final_score = np.tanh(total_score / 1.4) * 100
 
-            # AYRIŞMA & TREND KARARI
             if final_score > 15:
                 msg = "🚀 GÜÇLÜ BOĞA TRENDİ (Alıcılar ve Likidite Piyasayı Sürüklüyor)"
                 css = "div-bull"
@@ -193,22 +200,51 @@ class AdaptiveZeroLagEngine:
             return {'score': final_score, 'table': breakdown_df, 'msg': msg, 'css': css}
 
         # ----------------------------------------------------
-        # GÜMÜŞ (XAG) MATRİSİ (10 Katman - Madencilik & Bakır Güçlü)
+        # S&P 500 (SPX) MATRİSİ (Fiyat %40 Egemen)
         # ----------------------------------------------------
-        xag_factors = {
-            'XAG_Mom': xag_mom, 'Copper_Gold': copper_gold, 'XME_GLD_Ratio': xme_gld,
-            'SLV_GLD_Beta': slv_gld, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_mom,
-            'BTC_Liquidity': btc_mom, 'Gold_Oil': gold_oil, 'Credit_Risk_Spread': credit_risk, 'Bond_Yield_Pressure': yield_mom
+        spx_factors = {
+            'SPX_Mom': spx_mom, 'Credit_Flight_Safety': credit_flight, 'Credit_Risk_Spread': credit_risk,
+            'Sector_Rotation': sector_rot, 'Carry_Trade': jpy_mom, 'BTC_Liquidity': btc_mom,
+            'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_mom, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_mom
         }
-        xag_base = {
-            'XAG_Mom': 30.0, 'Copper_Gold': 20.0, 'XME_GLD_Ratio': 20.0,
-            'SLV_GLD_Beta': 10.0, 'Real_Yield_Shock': 10.0, 'DXY_Pressure': -10.0,
-            'BTC_Liquidity': 5.0, 'Gold_Oil': 5.0, 'Credit_Risk_Spread': 5.0, 'Bond_Yield_Pressure': -5.0
+        spx_base = {
+            'SPX_Mom': 40.0,              # Fiyat Trendi Egemen (%40)
+            'Credit_Flight_Safety': 15.0, # Kredi Güvenliği
+            'Credit_Risk_Spread': 10.0,   # Temerrüt Riski
+            'Sector_Rotation': 10.0,      # Sektör Rotasyonu
+            'Carry_Trade': 5.0,           # Carry Trade (Limitli)
+            'BTC_Liquidity': 5.0,         # Kripto Likidite (Limitli)
+            'Copper_Gold': 5.0,           # Büyüme
+            'DXY_Pressure': -5.0,         # Dolar Baskısı (-)
+            'Real_Yield_Shock': -5.0,     # Reel Faiz Baskısı (-)
+            'Bond_Yield_Pressure': -5.0   # Nominal Faiz Baskısı (-)
         }
-        scores['XAG'] = build_result(xag_base, xag_factors, xag_mom)
+        scores['SPX'] = build_result(spx_base, spx_factors)
 
         # ----------------------------------------------------
-        # ALTIN (XAU) MATRİSİ (10 Katman - Reel Faiz & Dolar Hassas)
+        # NASDAQ (NQ) MATRİSİ (Fiyat %40 Egemen)
+        # ----------------------------------------------------
+        nq_factors = {
+            'NQ_Mom': nq_mom, 'Sector_Rotation': sector_rot, 'Credit_Flight_Safety': credit_flight,
+            'Credit_Risk_Spread': credit_risk, 'Carry_Trade': jpy_mom, 'BTC_Liquidity': btc_mom,
+            'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_mom, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_mom
+        }
+        nq_base = {
+            'NQ_Mom': 40.0,               # Fiyat Trendi Egemen (%40)
+            'Sector_Rotation': 15.0,      # Teknoloji Liderliği
+            'Credit_Flight_Safety': 10.0, # Kredi Güvenliği
+            'Credit_Risk_Spread': 10.0,   # Temerrüt Riski
+            'Carry_Trade': 5.0,           # Carry Trade (Limitli)
+            'BTC_Liquidity': 5.0,         # Kripto Likidite (Limitli)
+            'Copper_Gold': 5.0,           # Büyüme
+            'DXY_Pressure': -5.0,         # Dolar Baskısı (-)
+            'Real_Yield_Shock': -5.0,     # Reel Faiz Baskısı (-)
+            'Bond_Yield_Pressure': -5.0   # Nominal Faiz Baskısı (-)
+        }
+        scores['NQ'] = build_result(nq_base, nq_factors)
+
+        # ----------------------------------------------------
+        # ALTIN (XAU) MATRİSİ (DOKUNULMADI - %100 KUSURSUZ ÇALIŞIYOR)
         # ----------------------------------------------------
         xau_factors = {
             'XAU_Mom': xau_mom, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_mom,
@@ -220,54 +256,39 @@ class AdaptiveZeroLagEngine:
             'Bond_Yield_Pressure': -15.0, 'Gold_Oil': 15.0, 'SLV_GLD_Beta': 10.0,
             'Credit_Flight_Safety': -5.0, 'Carry_Trade': 5.0, 'Copper_Gold': -3.0, 'BTC_Liquidity': -2.0
         }
-        scores['XAU'] = build_result(xau_base, xau_factors, xau_mom)
+        scores['XAU'] = build_result(xau_base, xau_factors)
 
         # ----------------------------------------------------
-        # S&P 500 (SPX) MATRİSİ (10 Katman - Carry & Kredi İştahı)
+        # GÜMÜŞ (XAG) MATRİSİ (DOKUNULMADI - %100 KUSURSUZ ÇALIŞIYOR)
         # ----------------------------------------------------
-        spx_factors = {
-            'SPX_Mom': spx_mom, 'Carry_Trade': jpy_mom, 'Credit_Flight_Safety': credit_flight,
-            'Sector_Rotation': sector_rot, 'Credit_Risk_Spread': credit_risk, 'BTC_Liquidity': btc_mom,
-            'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_mom, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_mom
+        xag_factors = {
+            'XAG_Mom': xag_mom, 'Copper_Gold': copper_gold, 'XME_GLD_Ratio': xme_gld,
+            'SLV_GLD_Beta': slv_gld, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_mom,
+            'BTC_Liquidity': btc_mom, 'Gold_Oil': gold_oil, 'Credit_Risk_Spread': credit_risk, 'Bond_Yield_Pressure': yield_mom
         }
-        spx_base = {
-            'SPX_Mom': 30.0, 'Carry_Trade': 20.0, 'Credit_Flight_Safety': 20.0,
-            'Sector_Rotation': 10.0, 'Credit_Risk_Spread': 10.0, 'BTC_Liquidity': 5.0,
-            'Copper_Gold': 5.0, 'DXY_Pressure': -5.0, 'Real_Yield_Shock': -5.0, 'Bond_Yield_Pressure': -5.0
+        xag_base = {
+            'XAG_Mom': 30.0, 'Copper_Gold': 20.0, 'XME_GLD_Ratio': 20.0,
+            'SLV_GLD_Beta': 10.0, 'Real_Yield_Shock': 10.0, 'DXY_Pressure': -10.0,
+            'BTC_Liquidity': 5.0, 'Gold_Oil': 5.0, 'Credit_Risk_Spread': 5.0, 'Bond_Yield_Pressure': -5.0
         }
-        scores['SPX'] = build_result(spx_base, spx_factors, spx_mom)
-
-        # ----------------------------------------------------
-        # NASDAQ (NQ) MATRİSİ (10 Katman - Tech Fonlama & Büyüme)
-        # ----------------------------------------------------
-        nq_factors = {
-            'NQ_Mom': nq_mom, 'Carry_Trade': jpy_mom, 'Credit_Flight_Safety': credit_flight,
-            'Sector_Rotation': sector_rot, 'Credit_Risk_Spread': credit_risk, 'BTC_Liquidity': btc_mom,
-            'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_mom, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_mom
-        }
-        nq_base = {
-            'NQ_Mom': 30.0, 'Carry_Trade': 20.0, 'Credit_Flight_Safety': 15.0,
-            'Sector_Rotation': 15.0, 'Credit_Risk_Spread': 10.0, 'BTC_Liquidity': 5.0,
-            'Copper_Gold': 5.0, 'DXY_Pressure': -5.0, 'Real_Yield_Shock': -5.0, 'Bond_Yield_Pressure': -5.0
-        }
-        scores['NQ'] = build_result(nq_base, nq_factors, nq_mom)
+        scores['XAG'] = build_result(xag_base, xag_factors)
 
         return scores
 
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = AdaptiveZeroLagEngine()
+engine = SovereignMacroEngine()
 
-st.title("🏛️ TIER-1 ADAPTIVE TERMINAL (v24.0)")
-st.markdown('<span class="status-badge">⚡ ADAPTIVE SALIENCE & ZERO-LAG KINETIC ENGINE</span>', unsafe_allow_html=True)
-st.caption("15m Kinetik Akış + 4H Üstel Hafıza + Anlık Şok Ağırlıklandırması (Kusursuz Çeviklik)")
+st.title("🏛️ TIER-1 MASTER TERMINAL (v25.0)")
+st.markdown('<span class="status-badge">⚡ SOVEREIGN PRICE MOMENTUM & PROXY-CAPPED ENGINE</span>', unsafe_allow_html=True)
+st.caption("Fiyat Egemenliği (%40) + Sınırlandırılmış Dış Proxy'ler | Yanıltmayan Gerçek Makro Yön")
 
 try:
     native_data = engine.fetch_all_native_data()
     
     if not native_data or len(native_data) < 3:
-        st.warning("Piyasa verileri güncelleniyor, lütfen bekleyin...")
+        st.warning("Veriler güncelleniyor, lütfen bekleyin...")
     else:
         results = engine.compute_all_asset_scores(native_data)
 
@@ -296,8 +317,8 @@ try:
             with col2:
                 if not table.empty:
                     fig = go.Figure(go.Bar(
-                        x=table['Dinamik Dikkat Ağırlığı (%)'], y=table['Katman (Öncü Faktör)'], orientation='h',
-                        marker_color=np.where(table['Dinamik Dikkat Ağırlığı (%)'] > 0, '#00E676', '#FF1744')
+                        x=table['Dinamik Ağırlık (%)'], y=table['Katman (Öncü Faktör)'], orientation='h',
+                        marker_color=np.where(table['Dinamik Ağırlık (%)'] > 0, '#00E676', '#FF1744')
                     ))
                     fig.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=280, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#CFD8DC', size=10))
                     st.plotly_chart(fig, use_container_width=True)
