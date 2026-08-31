@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v25.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v26.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -24,13 +24,13 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 1 dakikada bir otomatik yenileme
-count = st_autorefresh(interval=60000, limit=None, key="macro_250_refresh")
+# 1 dakikada bir otomatik yenile
+count = st_autorefresh(interval=60000, limit=None, key="macro_260_refresh")
 
 # ==========================================
-# 2. EGEMEN QUANT MAKRO MOTORU (v25.0)
+# 2. FİYAT EGEMENLİKLİ QUANT MAKRO MOTORU (v26.0)
 # ==========================================
-class SovereignMacroEngine:
+class SovereignClampedMacroEngine:
     def __init__(self):
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
@@ -85,20 +85,15 @@ class SovereignMacroEngine:
         return series_dict
 
     def calculate_sovereign_momentum(self, s):
-        """
-        EGEMEN FİYAT MOMENTUMU:
-        Seansın Başından Beri Getiri (%40) + 4 Saatlik Trend (%35) + 1 Saatlik İvme (%25)
-        Fiyat kırmızıdayken modelin yeşil yakmasını imkansız kılar.
-        """
+        """Fiyat Trendi: Seans Getirisi (%45) + 4H Trend (%35) + 1H İvme (%20)"""
         if s is None or len(s) < 16:
             return 0.0
         
         r1h  = (s.iloc[-1] / s.iloc[-5]) - 1.0 if len(s) >= 5 else 0.0
         r4h  = (s.iloc[-1] / s.iloc[-17]) - 1.0 if len(s) >= 17 else 0.0
-        r_session = (s.iloc[-1] / s.iloc[-32]) - 1.0 if len(s) >= 32 else r4h  # ~8 saatlik seans getirisi
+        r_session = (s.iloc[-1] / s.iloc[-32]) - 1.0 if len(s) >= 32 else r4h
         
-        # Egemen İvme Formülü
-        sovereign_mom = (0.40 * r_session) + (0.35 * r4h) + (0.25 * r1h)
+        sovereign_mom = (0.45 * r_session) + (0.35 * r4h) + (0.20 * r1h)
         
         pct = s.pct_change().dropna()
         vol = pct.ewm(span=16).std().iloc[-1]
@@ -120,7 +115,7 @@ class SovereignMacroEngine:
     def compute_all_asset_scores(self, data):
         scores = {}
         
-        # 1. EGEMEN HAM İVMELER
+        # 1. HAM İVMELER
         spx_mom = self.calculate_sovereign_momentum(data.get('SPX'))
         nq_mom = self.calculate_sovereign_momentum(data.get('NQ'))
         xau_mom = self.calculate_sovereign_momentum(data.get('XAU'))
@@ -128,8 +123,8 @@ class SovereignMacroEngine:
         
         btc_mom = self.calculate_sovereign_momentum(data.get('BTC'))
         jpy_mom = self.calculate_sovereign_momentum(data.get('JPY'))
-        dxy_mom = -self.calculate_sovereign_momentum(data.get('EUR'))  # EUR Düşüşü = Dolar Gücü
-        yield_mom = -self.calculate_sovereign_momentum(data.get('BONDS')) # Tahvil Düşüşü = Faiz Artışı
+        dxy_mom = -self.calculate_sovereign_momentum(data.get('EUR'))
+        yield_mom = -self.calculate_sovereign_momentum(data.get('BONDS'))
         
         real_yield_shock = self.calculate_ratio_kinetic(data.get('TIP'), data.get('TLT'))
         credit_risk = self.calculate_ratio_kinetic(data.get('HYG'), data.get('LQD'))
@@ -143,14 +138,14 @@ class SovereignMacroEngine:
         xme_gld = self.calculate_ratio_kinetic(data.get('XME'), data.get('XAU'))
 
         # ==========================================
-        # 2. EGEMEN AĞIRLIK VE LİMİT MOTORU
+        # 2. FİYAT EGEMENLİĞİ & UYUMSUZLUK KİLİDİ
         # ==========================================
-        def build_result(base_weights, factors_dict, max_proxy_weight=10.0):
+        def build_result(base_weights, factors_dict, target_mom_val):
             multipliers = {}
             for k, w in base_weights.items():
                 val = abs(factors_dict.get(k, 0.0))
-                # Fiyat momentumu daha fazla dikkat alır
-                boost = 1.5 if '_Mom' in k else 1.0
+                # Fiyat momentumu ekstra ağırlık koruması alır
+                boost = 1.6 if '_Mom' in k else 0.8
                 multipliers[k] = abs(w) * (1.0 + (min(val, 2.5) ** boost))
             
             total_att = sum(multipliers.values()) + 1e-6
@@ -159,13 +154,14 @@ class SovereignMacroEngine:
                 sign = 1.0 if w >= 0 else -1.0
                 raw_norm = (multipliers[k] / total_att) * 100.0
                 
-                # DIŞ PROXY TAVAN SINIRI: Carry Trade veya BTC %10'u geçip sistemi rehin alamaz!
-                if k in ['Carry_Trade', 'BTC_Liquidity']:
-                    raw_norm = min(raw_norm, max_proxy_weight)
+                # Fiyat momentumu en az %40 ağırlıkta kalır
+                if '_Mom' in k:
+                    raw_norm = max(raw_norm, 40.0)
+                else:
+                    raw_norm = min(raw_norm, 10.0) # Dış faktörler %10'u geçemez
                     
                 dyn_weights[k] = raw_norm * sign
 
-            # Ağırlıkları %100'e tekrar normalize et
             total_actual = sum(abs(v) for v in dyn_weights.values()) + 1e-6
             for k in dyn_weights:
                 dyn_weights[k] = (dyn_weights[k] / total_actual) * 100.0
@@ -184,105 +180,92 @@ class SovereignMacroEngine:
             breakdown_df = pd.DataFrame(breakdown).sort_values('Dinamik Ağırlık (%)', ascending=False)
             total_score = sum(factors_dict.get(k, 0.0) * (dyn_weights[k] / 100.0) for k in dyn_weights)
             
-            # 1.4 Böleni ile Kararlı Reaksiyon
-            final_score = np.tanh(total_score / 1.4) * 100
+            # Ham Skor
+            final_score = np.tanh(total_score / 1.2) * 100
 
-            if final_score > 15:
-                msg = "🚀 GÜÇLÜ BOĞA TRENDİ (Alıcılar ve Likidite Piyasayı Sürüklüyor)"
+            # UYUMSUZLUK KİLİDİ (Fiyat Düşerken Boğa Puanı Basamaz!)
+            if target_mom_val < -0.3 and final_score > 0:
+                final_score = min(final_score, 8.0) # Nötre çek
+                msg = "🟢 BOĞA UYUMSUZLUĞU (Fiyat Düşüyor ama Makro Zemin Güçlü - Dip Arayışı)"
+                css = "div-bull"
+            elif target_mom_val > 0.3 and final_score < 0:
+                final_score = max(final_score, -8.0) # Nötre çek
+                msg = "🚨 AYI UYUMSUZLUĞU (Fiyat Yükseliyor ama Makro Zemin Zayıf - Tepe Tuzağı)"
+                css = "div-bear"
+            elif final_score > 15:
+                msg = "🚀 GÜÇLÜ BOĞA TRENDİ (Fiyat ve Makro Alıcıları Destekliyor)"
                 css = "div-bull"
             elif final_score < -15:
-                msg = "🩸 GÜÇLÜ AYI BASKISI (Satıcılar ve Makro Fren Üstün)"
+                msg = "🩸 GÜÇLÜ AYI BASKISI (Fiyat ve Makro Satışta)"
                 css = "div-bear"
             else:
-                msg = "⚪ DENGELİ KONSOLİDASYON (Yönsüz / Kararsız Bölge)"
+                msg = "⚪ DENGELİ KONSOLİDASYON (Piyasa Yönsüz / İşlem Açma)"
                 css = "div-neutral"
 
             return {'score': final_score, 'table': breakdown_df, 'msg': msg, 'css': css}
 
-        # ----------------------------------------------------
-        # S&P 500 (SPX) MATRİSİ (Fiyat %40 Egemen)
-        # ----------------------------------------------------
+        # S&P 500
         spx_factors = {
             'SPX_Mom': spx_mom, 'Credit_Flight_Safety': credit_flight, 'Credit_Risk_Spread': credit_risk,
             'Sector_Rotation': sector_rot, 'Carry_Trade': jpy_mom, 'BTC_Liquidity': btc_mom,
             'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_mom, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_mom
         }
         spx_base = {
-            'SPX_Mom': 40.0,              # Fiyat Trendi Egemen (%40)
-            'Credit_Flight_Safety': 15.0, # Kredi Güvenliği
-            'Credit_Risk_Spread': 10.0,   # Temerrüt Riski
-            'Sector_Rotation': 10.0,      # Sektör Rotasyonu
-            'Carry_Trade': 5.0,           # Carry Trade (Limitli)
-            'BTC_Liquidity': 5.0,         # Kripto Likidite (Limitli)
-            'Copper_Gold': 5.0,           # Büyüme
-            'DXY_Pressure': -5.0,         # Dolar Baskısı (-)
-            'Real_Yield_Shock': -5.0,     # Reel Faiz Baskısı (-)
-            'Bond_Yield_Pressure': -5.0   # Nominal Faiz Baskısı (-)
+            'SPX_Mom': 50.0, 'Credit_Flight_Safety': 15.0, 'Credit_Risk_Spread': 10.0,
+            'Sector_Rotation': 10.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0,
+            'Copper_Gold': 5.0, 'DXY_Pressure': -5.0, 'Real_Yield_Shock': -5.0, 'Bond_Yield_Pressure': -5.0
         }
-        scores['SPX'] = build_result(spx_base, spx_factors)
+        scores['SPX'] = build_result(spx_base, spx_factors, spx_mom)
 
-        # ----------------------------------------------------
-        # NASDAQ (NQ) MATRİSİ (Fiyat %40 Egemen)
-        # ----------------------------------------------------
+        # NASDAQ
         nq_factors = {
             'NQ_Mom': nq_mom, 'Sector_Rotation': sector_rot, 'Credit_Flight_Safety': credit_flight,
             'Credit_Risk_Spread': credit_risk, 'Carry_Trade': jpy_mom, 'BTC_Liquidity': btc_mom,
             'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_mom, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_mom
         }
         nq_base = {
-            'NQ_Mom': 40.0,               # Fiyat Trendi Egemen (%40)
-            'Sector_Rotation': 15.0,      # Teknoloji Liderliği
-            'Credit_Flight_Safety': 10.0, # Kredi Güvenliği
-            'Credit_Risk_Spread': 10.0,   # Temerrüt Riski
-            'Carry_Trade': 5.0,           # Carry Trade (Limitli)
-            'BTC_Liquidity': 5.0,         # Kripto Likidite (Limitli)
-            'Copper_Gold': 5.0,           # Büyüme
-            'DXY_Pressure': -5.0,         # Dolar Baskısı (-)
-            'Real_Yield_Shock': -5.0,     # Reel Faiz Baskısı (-)
-            'Bond_Yield_Pressure': -5.0   # Nominal Faiz Baskısı (-)
+            'NQ_Mom': 50.0, 'Sector_Rotation': 15.0, 'Credit_Flight_Safety': 10.0,
+            'Credit_Risk_Spread': 10.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0,
+            'Copper_Gold': 5.0, 'DXY_Pressure': -5.0, 'Real_Yield_Shock': -5.0, 'Bond_Yield_Pressure': -5.0
         }
-        scores['NQ'] = build_result(nq_base, nq_factors)
+        scores['NQ'] = build_result(nq_base, nq_factors, nq_mom)
 
-        # ----------------------------------------------------
-        # ALTIN (XAU) MATRİSİ (DOKUNULMADI - %100 KUSURSUZ ÇALIŞIYOR)
-        # ----------------------------------------------------
+        # ALTIN
         xau_factors = {
             'XAU_Mom': xau_mom, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_mom,
             'Bond_Yield_Pressure': yield_mom, 'Gold_Oil': gold_oil, 'SLV_GLD_Beta': slv_gld,
             'Credit_Flight_Safety': credit_flight, 'Carry_Trade': jpy_mom, 'Copper_Gold': copper_gold, 'BTC_Liquidity': btc_mom
         }
         xau_base = {
-            'XAU_Mom': 30.0, 'Real_Yield_Shock': 25.0, 'DXY_Pressure': -20.0,
-            'Bond_Yield_Pressure': -15.0, 'Gold_Oil': 15.0, 'SLV_GLD_Beta': 10.0,
+            'XAU_Mom': 40.0, 'Real_Yield_Shock': 25.0, 'DXY_Pressure': -20.0,
+            'Bond_Yield_Pressure': -15.0, 'Gold_Oil': 10.0, 'SLV_GLD_Beta': 10.0,
             'Credit_Flight_Safety': -5.0, 'Carry_Trade': 5.0, 'Copper_Gold': -3.0, 'BTC_Liquidity': -2.0
         }
-        scores['XAU'] = build_result(xau_base, xau_factors)
+        scores['XAU'] = build_result(xau_base, xau_factors, xau_mom)
 
-        # ----------------------------------------------------
-        # GÜMÜŞ (XAG) MATRİSİ (DOKUNULMADI - %100 KUSURSUZ ÇALIŞIYOR)
-        # ----------------------------------------------------
+        # GÜMÜŞ
         xag_factors = {
             'XAG_Mom': xag_mom, 'Copper_Gold': copper_gold, 'XME_GLD_Ratio': xme_gld,
             'SLV_GLD_Beta': slv_gld, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_mom,
             'BTC_Liquidity': btc_mom, 'Gold_Oil': gold_oil, 'Credit_Risk_Spread': credit_risk, 'Bond_Yield_Pressure': yield_mom
         }
         xag_base = {
-            'XAG_Mom': 30.0, 'Copper_Gold': 20.0, 'XME_GLD_Ratio': 20.0,
+            'XAG_Mom': 40.0, 'Copper_Gold': 20.0, 'XME_GLD_Ratio': 20.0,
             'SLV_GLD_Beta': 10.0, 'Real_Yield_Shock': 10.0, 'DXY_Pressure': -10.0,
             'BTC_Liquidity': 5.0, 'Gold_Oil': 5.0, 'Credit_Risk_Spread': 5.0, 'Bond_Yield_Pressure': -5.0
         }
-        scores['XAG'] = build_result(xag_base, xag_factors)
+        scores['XAG'] = build_result(xag_base, xag_factors, xag_mom)
 
         return scores
 
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = SovereignMacroEngine()
+engine = SovereignClampedMacroEngine()
 
-st.title("🏛️ TIER-1 MASTER TERMINAL (v25.0)")
-st.markdown('<span class="status-badge">⚡ SOVEREIGN PRICE MOMENTUM & PROXY-CAPPED ENGINE</span>', unsafe_allow_html=True)
-st.caption("Fiyat Egemenliği (%40) + Sınırlandırılmış Dış Proxy'ler | Yanıltmayan Gerçek Makro Yön")
+st.title("🏛️ TIER-1 MASTER TERMINAL (v26.0)")
+st.markdown('<span class="status-badge">⚡ SOVEREIGN PRICE & DIVERGENCE CLAMPED ENGINE</span>', unsafe_allow_html=True)
+st.caption("Fiyat Egemenliği (%50) + Uyumsuzluk Fren Kilidi | Yanıltmayan Gerçek Makro Yön")
 
 try:
     native_data = engine.fetch_all_native_data()
