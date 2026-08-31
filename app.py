@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v27.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v28.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -21,16 +21,17 @@ st.markdown("""
     .div-bull { background-color: #004D40; color: #00E676; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #00E676; font-size: 13px; display: inline-block; margin-top: 5px; }
     .div-bear { background-color: #4A148C; color: #FF1744; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #FF1744; font-size: 13px; display: inline-block; margin-top: 5px; }
     .div-neutral { background-color: #263238; color: #ECEFF1; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #78909C; font-size: 13px; display: inline-block; margin-top: 5px; }
+    .div-exhaust { background-color: #E65100; color: #FFA726; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #FFA726; font-size: 13px; display: inline-block; margin-top: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
 # 1 dakikada bir otomatik yenile
-count = st_autorefresh(interval=60000, limit=None, key="macro_270_refresh")
+count = st_autorefresh(interval=60000, limit=None, key="macro_280_refresh")
 
 # ==========================================
-# 2. ÇİFT KATMANLI QUANT MAKRO MOTORU (v27.0)
+# 2. KİLİTLİ MAKRO & TUZAK DEDEKTÖRÜ (v28.0)
 # ==========================================
-class RockSolidMacroEngine:
+class LockedMacroEngine:
     def __init__(self):
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
@@ -84,85 +85,86 @@ class RockSolidMacroEngine:
 
         return series_dict
 
-    def calculate_anchor_momentum(self, s):
+    def calculate_locked_momentum(self, s):
         """
-        SARSILMAZ 4H ANA TREND MOMENTUMU:
-        4-Saatlik Trend (%60) + Seansın Başından Beri Getiri (%40)
-        15 dakikalık gürültülerde asla yön değiştirmez.
+        KİLİTLİ 4H MAKRO MOMENTUM:
+        4 Saatlik Ana Trend (%70) + 1 Saatlik İvme (%30).
+        15 dakikalık anlık iğnelerin makroyu sıfırlamasına izin vermez.
         """
         if s is None or len(s) < 16:
             return 0.0, 0.0
         
-        r15m = (s.iloc[-1] / s.iloc[-2]) - 1.0 if len(s) >= 2 else 0.0
+        r1h  = (s.iloc[-1] / s.iloc[-5]) - 1.0 if len(s) >= 5 else 0.0
         r4h  = (s.iloc[-1] / s.iloc[-17]) - 1.0 if len(s) >= 17 else 0.0
-        r_session = (s.iloc[-1] / s.iloc[-32]) - 1.0 if len(s) >= 32 else r4h
         
-        # 1. Sarsılmaz Ana Makro Trend
-        anchor_trend = (0.60 * r4h) + (0.40 * r_session)
+        # 4H Ağırlıklı Ana Momentum
+        locked_trend = (0.70 * r4h) + (0.30 * r1h)
         
         pct = s.pct_change().dropna()
-        vol = pct.ewm(span=24).std().iloc[-1]
+        vol = pct.ewm(span=32).std().iloc[-1]
         if pd.isna(vol) or vol < 1e-5:
             vol = 0.003
             
-        sharpe_anchor = anchor_trend / vol
+        sharpe_macro = locked_trend / vol
         
-        # 2. 15-Dakikalık Taktiksel Mikro İvme
-        sharpe_micro = r15m / vol
+        # 15m Aşırı Alım / Aşırı Satım Sapması (Exhaustion)
+        r15m = (s.iloc[-1] / s.iloc[-2]) - 1.0 if len(s) >= 2 else 0.0
+        micro_exhaustion = r15m / vol
         
-        return float(np.clip(sharpe_anchor, -2.5, 2.5)), float(np.clip(sharpe_micro, -2.5, 2.5))
+        return float(np.clip(sharpe_macro, -2.5, 2.5)), float(np.clip(micro_exhaustion, -2.5, 2.5))
 
-    def calculate_ratio_anchor(self, s1, s2):
+    def calculate_ratio_locked(self, s1, s2):
         if s1 is None or s2 is None or s1.empty or s2.empty:
             return 0.0
         common_idx = s1.index.intersection(s2.index)
         if len(common_idx) < 16:
             return 0.0
         ratio = s1.loc[common_idx] / (s2.loc[common_idx] + 1e-6)
-        anchor, _ = self.calculate_anchor_momentum(ratio)
-        return anchor
+        macro_val, _ = self.calculate_locked_momentum(ratio)
+        return macro_val
 
     def compute_all_asset_scores(self, data):
         scores = {}
         
-        # 1. TÜM VARLIKLARIN ANA VE MİKRO İVMELERİ
-        spx_anchor, spx_micro = self.calculate_anchor_momentum(data.get('SPX'))
-        nq_anchor, nq_micro = self.calculate_anchor_momentum(data.get('NQ'))
-        xau_anchor, xau_micro = self.calculate_anchor_momentum(data.get('XAU'))
-        xag_anchor, xag_micro = self.calculate_anchor_momentum(data.get('XAG'))
+        # 1. KİLİTLİ MAKRO DEĞERLER
+        spx_macro, spx_micro = self.calculate_locked_momentum(data.get('SPX'))
+        nq_macro, nq_micro = self.calculate_locked_momentum(data.get('NQ'))
+        xau_macro, xau_micro = self.calculate_locked_momentum(data.get('XAU'))
+        xag_macro, xag_micro = self.calculate_locked_momentum(data.get('XAG'))
         
-        btc_anchor, _ = self.calculate_anchor_momentum(data.get('BTC'))
-        jpy_anchor, _ = self.calculate_anchor_momentum(data.get('JPY'))
-        dxy_anchor = -self.calculate_anchor_momentum(data.get('EUR'))[0]
-        yield_anchor = -self.calculate_anchor_momentum(data.get('BONDS'))[0]
+        btc_macro, _ = self.calculate_locked_momentum(data.get('BTC'))
+        jpy_macro, _ = self.calculate_locked_momentum(data.get('JPY'))
+        dxy_macro = -self.calculate_locked_momentum(data.get('EUR'))[0]
+        yield_macro = -self.calculate_locked_momentum(data.get('BONDS'))[0]
         
-        real_yield_shock = self.calculate_ratio_anchor(data.get('TIP'), data.get('TLT'))
-        credit_risk = self.calculate_ratio_anchor(data.get('HYG'), data.get('LQD'))
-        credit_flight = self.calculate_ratio_anchor(data.get('HYG'), data.get('TLT'))
-        sector_rot = self.calculate_ratio_anchor(data.get('XLK'), data.get('XLF'))
-        breadth = self.calculate_ratio_anchor(data.get('SPX'), data.get('RSP'))
+        real_yield_shock = self.calculate_ratio_locked(data.get('TIP'), data.get('TLT'))
+        credit_risk = self.calculate_ratio_locked(data.get('HYG'), data.get('LQD'))
+        credit_flight = self.calculate_ratio_locked(data.get('HYG'), data.get('TLT'))
+        sector_rot = self.calculate_ratio_locked(data.get('XLK'), data.get('XLF'))
+        breadth = self.calculate_ratio_locked(data.get('SPX'), data.get('RSP'))
         
-        copper_gold = self.calculate_ratio_anchor(data.get('COPPER'), data.get('XAU'))
-        gold_oil = self.calculate_ratio_anchor(data.get('XAU'), data.get('OIL'))
-        slv_gld = self.calculate_ratio_anchor(data.get('XAG'), data.get('XAU'))
-        xme_gld = self.calculate_ratio_anchor(data.get('XME'), data.get('XAU'))
+        copper_gold = self.calculate_ratio_locked(data.get('COPPER'), data.get('XAU'))
+        gold_oil = self.calculate_ratio_locked(data.get('XAU'), data.get('OIL'))
+        slv_gld = self.calculate_ratio_locked(data.get('XAG'), data.get('XAU'))
+        xme_gld = self.calculate_ratio_locked(data.get('XME'), data.get('XAU'))
 
         # ==========================================
         # 2. SARSILMAZ HESAPLAMA MOTORU
         # ==========================================
-        def build_result(base_weights, factors_dict, target_anchor, target_micro):
+        def build_result(base_weights, factors_dict, target_macro, target_micro):
             multipliers = {}
             for k, w in base_weights.items():
                 val = abs(factors_dict.get(k, 0.0))
-                multipliers[k] = abs(w) * (1.0 + (min(val, 2.0) ** 1.0))
+                # Stabil çarpan (1 + |Z|^0.8) ile aşırı zıplamalar engellendi
+                multipliers[k] = abs(w) * (1.0 + (min(val, 2.0) ** 0.8))
             
             total_att = sum(multipliers.values()) + 1e-6
             dyn_weights = {}
             for k, w in base_weights.items():
                 sign = 1.0 if w >= 0 else -1.0
                 raw_norm = (multipliers[k] / total_att) * 100.0
-                if k in ['Carry_Trade', 'BTC_Liquidity']:
-                    raw_norm = min(raw_norm, 8.0) # Sıkı Proxy Sınırı
+                if k in ['Carry_Trade', 'BTC_Liquidity', 'DXY_Pressure']:
+                    raw_norm = min(raw_norm, 12.0) # Dış faktör tavanı
                 dyn_weights[k] = raw_norm * sign
 
             total_actual = sum(abs(v) for v in dyn_weights.values()) + 1e-6
@@ -183,16 +185,16 @@ class RockSolidMacroEngine:
             breakdown_df = pd.DataFrame(breakdown).sort_values('Dinamik Ağırlık (%)', ascending=False)
             total_score = sum(factors_dict.get(k, 0.0) * (dyn_weights[k] / 100.0) for k in dyn_weights)
             
-            # SARSILMAZ 4H SKOR (1.3 Böleni)
-            final_score = np.tanh(total_score / 1.3) * 100
+            # KİLİTLİ 4H SKOR
+            final_score = np.tanh(total_score / 1.0) * 100
 
-            # 15-DAKİKALIK TAKTİKSEL ERKEN UYARI MANTIĞI
-            if final_score < -20 and target_micro > 0.4:
-                msg = "⚠️ TAKTİKSEL UYARI: Kısa Vadeli Tepki Yükselişi (Ana Rota: AYI)"
-                css = "div-neutral"
-            elif final_score > 20 and target_micro < -0.4:
-                msg = "⚠️ TAKTİKSEL UYARI: Kısa Vadeli Kâr Satışı (Ana Rota: BOĞA)"
-                css = "div-neutral"
+            # AKILLI AŞIRI ALIM / SATIM DEDEKTÖRÜ
+            if final_score < -20 and target_micro > 1.2:
+                msg = "💎 DİRENÇ TESTİ (Aşırı Alım Tepesi - Sahte Yükseliş/Satış Fırsatı)"
+                css = "div-exhaust"
+            elif final_score > 20 and target_micro < -1.2:
+                msg = "💎 DESTEK TESTİ (Aşırı Satım Dibi - Sahte Düşüş/Alım Fırsatı)"
+                css = "div-exhaust"
             elif final_score > 20:
                 msg = "🚀 GÜÇLÜ BOĞA TRENDİ (4H Pozisyon Yönü: ALIM)"
                 css = "div-bull"
@@ -207,66 +209,66 @@ class RockSolidMacroEngine:
 
         # S&P 500
         spx_factors = {
-            'SPX_Mom': spx_anchor, 'Credit_Flight_Safety': credit_flight, 'Credit_Risk_Spread': credit_risk,
-            'Sector_Rotation': sector_rot, 'Carry_Trade': jpy_anchor, 'BTC_Liquidity': btc_anchor,
-            'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_anchor, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_anchor
+            'SPX_Mom': spx_macro, 'Credit_Flight_Safety': credit_flight, 'Credit_Risk_Spread': credit_risk,
+            'Sector_Rotation': sector_rot, 'Carry_Trade': jpy_macro, 'BTC_Liquidity': btc_macro,
+            'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_macro, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_macro
         }
         spx_base = {
-            'SPX_Mom': 45.0, 'Credit_Flight_Safety': 15.0, 'Credit_Risk_Spread': 10.0,
+            'SPX_Mom': 40.0, 'Credit_Flight_Safety': 15.0, 'Credit_Risk_Spread': 10.0,
             'Sector_Rotation': 10.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0,
             'Copper_Gold': 5.0, 'DXY_Pressure': -5.0, 'Real_Yield_Shock': -5.0, 'Bond_Yield_Pressure': -5.0
         }
-        scores['SPX'] = build_result(spx_base, spx_factors, spx_anchor, spx_micro)
+        scores['SPX'] = build_result(spx_base, spx_factors, spx_macro, spx_micro)
 
         # NASDAQ
         nq_factors = {
-            'NQ_Mom': nq_anchor, 'Sector_Rotation': sector_rot, 'Credit_Flight_Safety': credit_flight,
-            'Credit_Risk_Spread': credit_risk, 'Carry_Trade': jpy_anchor, 'BTC_Liquidity': btc_anchor,
-            'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_anchor, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_anchor
+            'NQ_Mom': nq_macro, 'Sector_Rotation': sector_rot, 'Credit_Flight_Safety': credit_flight,
+            'Credit_Risk_Spread': credit_risk, 'Carry_Trade': jpy_macro, 'BTC_Liquidity': btc_macro,
+            'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_macro, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_macro
         }
         nq_base = {
-            'NQ_Mom': 45.0, 'Sector_Rotation': 15.0, 'Credit_Flight_Safety': 10.0,
+            'NQ_Mom': 40.0, 'Sector_Rotation': 15.0, 'Credit_Flight_Safety': 10.0,
             'Credit_Risk_Spread': 10.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0,
             'Copper_Gold': 5.0, 'DXY_Pressure': -5.0, 'Real_Yield_Shock': -5.0, 'Bond_Yield_Pressure': -5.0
         }
-        scores['NQ'] = build_result(nq_base, nq_factors, nq_anchor, nq_micro)
+        scores['NQ'] = build_result(nq_base, nq_factors, nq_macro, nq_micro)
 
         # ALTIN
         xau_factors = {
-            'XAU_Mom': xau_anchor, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_anchor,
-            'Bond_Yield_Pressure': yield_anchor, 'Gold_Oil': gold_oil, 'SLV_GLD_Beta': slv_gld,
-            'Credit_Flight_Safety': credit_flight, 'Carry_Trade': jpy_anchor, 'Copper_Gold': copper_gold, 'BTC_Liquidity': btc_anchor
+            'XAU_Mom': xau_macro, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_macro,
+            'Bond_Yield_Pressure': yield_macro, 'Gold_Oil': gold_oil, 'SLV_GLD_Beta': slv_gld,
+            'Credit_Flight_Safety': credit_flight, 'Carry_Trade': jpy_macro, 'Copper_Gold': copper_gold, 'BTC_Liquidity': btc_macro
         }
         xau_base = {
-            'XAU_Mom': 35.0, 'Real_Yield_Shock': 25.0, 'DXY_Pressure': -20.0,
+            'XAU_Mom': 35.0, 'Real_Yield_Shock': 25.0, 'DXY_Pressure': -15.0,
             'Bond_Yield_Pressure': -15.0, 'Gold_Oil': 10.0, 'SLV_GLD_Beta': 10.0,
             'Credit_Flight_Safety': -5.0, 'Carry_Trade': 5.0, 'Copper_Gold': -3.0, 'BTC_Liquidity': -2.0
         }
-        scores['XAU'] = build_result(xau_base, xau_factors, xau_anchor, xau_micro)
+        scores['XAU'] = build_result(xau_base, xau_factors, xau_macro, xau_micro)
 
         # GÜMÜŞ
         xag_factors = {
-            'XAG_Mom': xag_anchor, 'Copper_Gold': copper_gold, 'XME_GLD_Ratio': xme_gld,
-            'SLV_GLD_Beta': slv_gld, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_anchor,
-            'BTC_Liquidity': btc_anchor, 'Gold_Oil': gold_oil, 'Credit_Risk_Spread': credit_risk, 'Bond_Yield_Pressure': yield_anchor
+            'XAG_Mom': xag_macro, 'Copper_Gold': copper_gold, 'XME_GLD_Ratio': xme_gld,
+            'SLV_GLD_Beta': slv_gld, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_macro,
+            'BTC_Liquidity': btc_macro, 'Gold_Oil': gold_oil, 'Credit_Risk_Spread': credit_risk, 'Bond_Yield_Pressure': yield_macro
         }
         xag_base = {
             'XAG_Mom': 35.0, 'Copper_Gold': 20.0, 'XME_GLD_Ratio': 20.0,
             'SLV_GLD_Beta': 10.0, 'Real_Yield_Shock': 10.0, 'DXY_Pressure': -10.0,
             'BTC_Liquidity': 5.0, 'Gold_Oil': 5.0, 'Credit_Risk_Spread': 5.0, 'Bond_Yield_Pressure': -5.0
         }
-        scores['XAG'] = build_result(xag_base, xag_factors, xag_anchor, xag_micro)
+        scores['XAG'] = build_result(xag_base, xag_factors, xag_macro, xag_micro)
 
         return scores
 
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = RockSolidMacroEngine()
+engine = LockedMacroEngine()
 
-st.title("🏛️ TIER-1 MASTER TERMINAL (v27.0)")
-st.markdown('<span class="status-badge">🛡️ ROCK-SOLID 4H POSITION & TACTICAL RADAR</span>', unsafe_allow_html=True)
-st.caption("Sarsılmaz 4-Saatlik Ana Rota + 15-Dakikalık Taktiksel Uyarı Radarı")
+st.title("🏛️ TIER-1 MASTER TERMINAL (v28.0)")
+st.markdown('<span class="status-badge">🛡️ LOCKED MACRO REGIME & EXHAUSTION DETECTOR</span>', unsafe_allow_html=True)
+st.caption("Sarsılmaz Kilitli 4H Makro Trend + Aşırı Alım/Satım Tepe/Dip Avcısı")
 
 try:
     native_data = engine.fetch_all_native_data()
