@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v31.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v32.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -30,12 +30,12 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # 1 dakikada bir otomatik yenile
-count = st_autorefresh(interval=60000, limit=None, key="macro_310_refresh")
+count = st_autorefresh(interval=60000, limit=None, key="macro_320_refresh")
 
 # ==========================================
-# 2. SARSILMAZ ALL-WEATHER QUANT MOTORU (v31.0)
+# 2. HAKİKİ KREDİ AĞIRLIKLI QUANT MOTORU (v32.0)
 # ==========================================
-class RockSolidAllWeatherEngine:
+class CreditDrivenMacroEngine:
     def __init__(self):
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
@@ -90,21 +90,14 @@ class RockSolidAllWeatherEngine:
         return series_dict
 
     def calculate_v28_locked_momentum(self, s):
-        """
-        v28'İN SARSILMAZ ÇEKİRDEĞİ:
-        4 Saatlik Ana Trend (%70) + 1 Saatlik İvme (%30).
-        15 dakikalık tekil mum gürültüleri ana skora ASLA etki edemez.
-        """
         if s is None or len(s) < 16:
             return 0.0, 0.0
         
         r1h  = (s.iloc[-1] / s.iloc[-5]) - 1.0 if len(s) >= 5 else 0.0
         r4h  = (s.iloc[-1] / s.iloc[-17]) - 1.0 if len(s) >= 17 else 0.0
         
-        # Sarsılmaz 4H Makro Trend
         locked_trend = (0.70 * r4h) + (0.30 * r1h)
         
-        # 8 Saatlik (32 bar) Derin Volatilite Normalizasyonu
         pct = s.pct_change().dropna()
         vol = pct.ewm(span=32).std().iloc[-1]
         if pd.isna(vol) or vol < 1e-5:
@@ -112,7 +105,6 @@ class RockSolidAllWeatherEngine:
             
         sharpe_macro = locked_trend / vol
         
-        # 15m Aşırı Alım/Satım Sinyali (Sadece alttaki uyarı için kullanılır, skoru bozmaz)
         r15m = (s.iloc[-1] / s.iloc[-2]) - 1.0 if len(s) >= 2 else 0.0
         micro_exhaustion = r15m / vol
         
@@ -128,35 +120,46 @@ class RockSolidAllWeatherEngine:
         macro_val, _ = self.calculate_v28_locked_momentum(ratio)
         return macro_val
 
-    def detect_macro_regime(self, growth_val, inflation_val):
-        """Ray Dalio 4-Evreli Makro Matrisi"""
-        if growth_val > 0 and inflation_val <= 0:
+    def detect_true_macro_regime(self, factors):
+        """
+        KURUMSAL REJİM TESPİT MOTORU:
+        Büyüme Vektörü: %70 Kredi Piyasası + %15 Sektör + %15 Bakır
+        Enflasyon/Sıkılık Vektörü: %50 Faiz Baskısı + %30 TIPS Reel Faiz + %20 Petrol
+        """
+        # Büyüme (Kredi çöküyorsa büyüme pozitif çıkamaz!)
+        growth_vector = (0.35 * factors['Credit_Risk_Spread']) + \
+                        (0.35 * factors['Credit_Flight_Safety']) + \
+                        (0.15 * factors['Sector_Rotation']) + \
+                        (0.15 * factors['Copper_Gold'])
+
+        # Enflasyon / Likidite Sıkılığı
+        tightness_vector = (0.40 * factors['Bond_Yield_Pressure']) + \
+                           (0.35 * factors['Real_Yield_Shock']) + \
+                           (0.25 * factors['Gold_Oil'])
+
+        if growth_vector > 0 and tightness_vector <= 0:
             return {
                 'name': "☀️ GOLDILOCKS (Güçlü Büyüme / Düşük Enflasyon)",
                 'css': "regime-goldilocks",
-                'desc': "Hisse senetleri ve teknoloji için en ideal zemin. Büyüme hisseleri lider, emtialar dengeli.",
-                'regime_id': 'GOLDILOCKS'
+                'desc': "Kredi piyasası sağlıklı, faiz baskısı yok. Hisse senetleri ve teknoloji için en ideal zemin."
             }
-        elif growth_val > 0 and inflation_val > 0:
+        elif growth_vector > 0 and tightness_vector > 0:
             return {
                 'name': "🚀 REFLASYON (Güçlü Büyüme / Yükselen Enflasyon)",
                 'css': "regime-reflation",
-                'desc': "Sanayi metalleri, Gümüş ve Bakır patlaması. Değer/Bankacılık hisseleri güçlü, faizler baskılı.",
-                'regime_id': 'REFLATION'
+                'desc': "Kredi güçlü, talep yüksek. Sanayi metalleri, Gümüş ve Değer/Bankacılık hisseleri lider."
             }
-        elif growth_val <= 0 and inflation_val > 0:
+        elif growth_vector <= 0 and tightness_vector > 0:
             return {
-                'name': "🌋 STAGFLASYON (Düşük Büyüme / Yüksek Enflasyon)",
+                'name': "🌋 STAGFLASYON & LİKİDİTE SIKIŞMASI (Kredi Stresi / Yüksek Faiz)",
                 'css': "regime-stagflation",
-                'desc': "Altın ve Enerjinin mutlak krallığı. Hisse senetleri iskonto baskısı altında, riskli krediler zayıf.",
-                'regime_id': 'STAGFLATION'
+                'desc': "Kredi piyasası ve büyüme baskı altında, faizler yüksek. Altın ve Nakit güvenli liman, hisseler kırılgan."
             }
         else:
             return {
-                'name': "❄️ DEFLASYON / KRİZ (Düşük Büyüme / Düşük Enflasyon)",
+                'name': "❄️ DEFLASYON / RESESYON (Düşük Büyüme / Düşen Faiz)",
                 'css': "regime-deflation",
-                'desc': "Devlet tahvilleri ve nakit güvenli liman. Hisse ve sanayi emtiaları genel satış baskısında.",
-                'regime_id': 'DEFLATION'
+                'desc': "Büyüme çöküşte, faizler geriliyor. Uzun vadeli devlet tahvilleri en güçlü sığınak."
             }
 
     def compute_all_asset_scores(self, data):
@@ -184,19 +187,23 @@ class RockSolidAllWeatherEngine:
         slv_gld = self.calculate_ratio_locked(data.get('XAG'), data.get('XAU'))
         xme_gld = self.calculate_ratio_locked(data.get('XME'), data.get('XAU'))
 
-        # REJİM TESPİTİ
-        growth_v = (0.6 * copper_gold) + (0.4 * breadth)
-        inflation_v = (0.6 * real_yield_shock) + (0.4 * gold_oil)
-        regime_info = self.detect_macro_regime(growth_v, inflation_v)
+        factors_pool = {
+            'Credit_Risk_Spread': credit_risk, 'Credit_Flight_Safety': credit_flight,
+            'Sector_Rotation': sector_rot, 'Copper_Gold': copper_gold,
+            'Bond_Yield_Pressure': yield_macro, 'Real_Yield_Shock': real_yield_shock,
+            'Gold_Oil': gold_oil
+        }
+
+        # HAKİKİ KREDİ AĞIRLIKLI REJİM TESPİTİ
+        regime_info = self.detect_true_macro_regime(factors_pool)
 
         # ==========================================
-        # 2. v28'İN SARSILMAZ HESAPLAMA MOTORU
+        # 2. HESAPLAMA MOTORU
         # ==========================================
         def build_result(base_weights, factors_dict, target_macro, target_micro):
             multipliers = {}
             for k, w in base_weights.items():
                 val = abs(factors_dict.get(k, 0.0))
-                # v28'in sakin ve kararlı 0.8 üs katsayısı
                 multipliers[k] = abs(w) * (1.0 + (min(val, 2.0) ** 0.8))
             
             total_att = sum(multipliers.values()) + 1e-6
@@ -205,7 +212,7 @@ class RockSolidAllWeatherEngine:
                 sign = 1.0 if w >= 0 else -1.0
                 raw_norm = (multipliers[k] / total_att) * 100.0
                 if k in ['Carry_Trade', 'BTC_Liquidity', 'DXY_Pressure']:
-                    raw_norm = min(raw_norm, 12.0) # Sıkı Dış Tavan
+                    raw_norm = min(raw_norm, 12.0)
                 dyn_weights[k] = raw_norm * sign
 
             total_actual = sum(abs(v) for v in dyn_weights.values()) + 1e-6
@@ -226,10 +233,8 @@ class RockSolidAllWeatherEngine:
             breakdown_df = pd.DataFrame(breakdown).sort_values('Dinamik Ağırlık (%)', ascending=False)
             total_score = sum(factors_dict.get(k, 0.0) * (dyn_weights[k] / 100.0) for k in dyn_weights)
             
-            # v28'in Oturaklı 1.0 Tanh Böleni
             final_score = np.tanh(total_score / 1.0) * 100
 
-            # AKILLI AŞIRI ALIM / SATIM DEDEKTÖRÜ (v28 Mantığı)
             if final_score < -20 and target_micro > 1.2:
                 msg = "💎 DİRENÇ TESTİ (Aşırı Alım Tepesi - Sahte Yükseliş/Satış Fırsatı)"
                 css = "div-exhaust"
@@ -305,11 +310,11 @@ class RockSolidAllWeatherEngine:
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = RockSolidAllWeatherEngine()
+engine = CreditDrivenMacroEngine()
 
-st.title("🏛️ TIER-1 MASTER TERMINAL (v31.0)")
-st.markdown('<span class="status-badge">🛡️ ROCK-SOLID ALL-WEATHER MASTER ENGINE</span>', unsafe_allow_html=True)
-st.caption("v28 Sarsılmaz Makro Çekirdeği + Ray Dalio 4-Evreli Rejim Dedektörü")
+st.title("🏛️ TIER-1 MASTER TERMINAL (v32.0)")
+st.markdown('<span class="status-badge">🛡️ CREDIT-DRIVEN MACRO REGIME ENGINE</span>', unsafe_allow_html=True)
+st.caption("Kredi Piyasası Ağırlıklı Hakiki Büyüme/Enflasyon Rejim Dedektörü")
 
 try:
     native_data = engine.fetch_all_native_data()
@@ -319,7 +324,7 @@ try:
     else:
         results, regime_info = engine.compute_all_asset_scores(native_data)
 
-        # ÜST MAKRO REJİM BANDI
+        # HAKİKİ MAKRO REJİM BANDI
         st.markdown(f"""
         <div class="regime-box {regime_info['css']}">
             Mevcut Küresel Makro Rejim: {regime_info['name']}<br>
@@ -339,7 +344,6 @@ try:
             with col1:
                 st.markdown(f"### {asset_title} 4H Ana Rotası")
                 
-                # Nötr bölge [-20, +20] BEYAZ!
                 if score > 20:
                     c = "#00E676"  # Yeşil (Boğa)
                 elif score < -20:
