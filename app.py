@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v32.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 REALITY TERMINAL (v33.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -21,21 +21,20 @@ st.markdown("""
     .regime-goldilocks { background-color: #00332c; color: #00E676; border-color: #00E676; }
     .regime-reflation { background-color: #332200; color: #FFD600; border-color: #FFD600; }
     .regime-stagflation { background-color: #33001a; color: #FF4081; border-color: #FF4081; }
-    .regime-deflation { background-color: #001a33; color: #40C4FF; border-color: #40C4FF; }
+    .regime-deflation { background-color: #330000; color: #FF1744; border-color: #FF1744; }
     .div-bull { background-color: #004D40; color: #00E676; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #00E676; font-size: 13px; display: inline-block; margin-top: 5px; }
     .div-bear { background-color: #4A148C; color: #FF1744; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #FF1744; font-size: 13px; display: inline-block; margin-top: 5px; }
     .div-neutral { background-color: #263238; color: #ECEFF1; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #78909C; font-size: 13px; display: inline-block; margin-top: 5px; }
-    .div-exhaust { background-color: #E65100; color: #FFA726; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #FFA726; font-size: 13px; display: inline-block; margin-top: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
-# 1 dakikada bir otomatik yenile
-count = st_autorefresh(interval=60000, limit=None, key="macro_320_refresh")
+# 1 dakikada bir otomatik yenileme
+count = st_autorefresh(interval=60000, limit=None, key="macro_330_refresh")
 
 # ==========================================
-# 2. HAKİKİ KREDİ AĞIRLIKLI QUANT MOTORU (v32.0)
+# 2. GERÇEK ZAMANLI QUANT MAKRO MOTORU (v33.0)
 # ==========================================
-class CreditDrivenMacroEngine:
+class RealityMacroEngine:
     def __init__(self):
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
@@ -76,131 +75,115 @@ class CreditDrivenMacroEngine:
         return pd.Series(dtype=float)
 
     @st.cache_data(ttl=60, show_spinner=False)
-    def fetch_all_native_data(_self):
-        series_dict = {}
+    def fetch_synchronized_grid(_self):
+        """Tüm varlıkları çeker ve ortak bir 15m zaman ızgarasında hizalar."""
+        raw_dict = {}
         def worker(sym, alias):
             s = _self.fetch_single_ticker(sym)
             if not s.empty:
-                series_dict[alias] = s
+                raw_dict[alias] = s
 
         with ThreadPoolExecutor(max_workers=16) as executor:
             for sym, alias in _self.symbol_map.items():
                 executor.submit(worker, sym, alias)
 
-        return series_dict
+        df = pd.DataFrame(raw_dict)
+        df = df.sort_index()
+        df = df.resample('15min').last().ffill().bfill().dropna()
+        return df
 
-    def calculate_v28_locked_momentum(self, s):
-        if s is None or len(s) < 16:
-            return 0.0, 0.0
+    def calculate_peak_drawdown_velocity(self, s):
+        """
+        GERÇEK YÖN İVMESİ:
+        Zirveden Düşüş (%40) + Son 1 Saat (%35) + Son 4 Saat (%25).
+        Zirveden çakılan bir varlık ASLA pozitif çıkamaz!
+        """
+        if s is None or len(s) < 24:
+            return 0.0
         
-        r1h  = (s.iloc[-1] / s.iloc[-5]) - 1.0 if len(s) >= 5 else 0.0
-        r4h  = (s.iloc[-1] / s.iloc[-17]) - 1.0 if len(s) >= 17 else 0.0
+        # Son 1 saat (4 bar) ve 4 saat (16 bar) getirisi
+        r1h = (s.iloc[-1] / s.iloc[-5]) - 1.0
+        r4h = (s.iloc[-1] / s.iloc[-17]) - 1.0
         
-        locked_trend = (0.70 * r4h) + (0.30 * r1h)
+        # Son 24 barın (6 saatin) en yüksek ve en düşük seviyesi
+        recent_window = s.tail(24)
+        peak = recent_window.max()
+        trough = recent_window.min()
+        
+        # Zirveden uzaklık / Dip seviyesinden uzaklık
+        dd_from_peak = (s.iloc[-1] - peak) / (peak + 1e-6)
+        rebound_from_trough = (s.iloc[-1] - trough) / (trough + 1e-6)
+        
+        # Eğer fiyat zirvesinin altındaysa negatif baskı egemendir
+        price_position_score = dd_from_peak if abs(dd_from_peak) > abs(rebound_from_trough) else rebound_from_trough
+        
+        # Gerçek Birleşik İvme Formülü
+        true_mom = (0.40 * price_position_score) + (0.35 * r1h) + (0.25 * r4h)
         
         pct = s.pct_change().dropna()
-        vol = pct.ewm(span=32).std().iloc[-1]
+        vol = pct.tail(32).std()
         if pd.isna(vol) or vol < 1e-5:
             vol = 0.003
             
-        sharpe_macro = locked_trend / vol
-        
-        r15m = (s.iloc[-1] / s.iloc[-2]) - 1.0 if len(s) >= 2 else 0.0
-        micro_exhaustion = r15m / vol
-        
-        return float(np.clip(sharpe_macro, -2.5, 2.5)), float(np.clip(micro_exhaustion, -2.5, 2.5))
+        sharpe = true_mom / vol
+        return float(np.clip(sharpe, -2.5, 2.5))
 
-    def calculate_ratio_locked(self, s1, s2):
-        if s1 is None or s2 is None or s1.empty or s2.empty:
-            return 0.0
-        common_idx = s1.index.intersection(s2.index)
-        if len(common_idx) < 16:
-            return 0.0
-        ratio = s1.loc[common_idx] / (s2.loc[common_idx] + 1e-6)
-        macro_val, _ = self.calculate_v28_locked_momentum(ratio)
-        return macro_val
-
-    def detect_true_macro_regime(self, factors):
-        """
-        KURUMSAL REJİM TESPİT MOTORU:
-        Büyüme Vektörü: %70 Kredi Piyasası + %15 Sektör + %15 Bakır
-        Enflasyon/Sıkılık Vektörü: %50 Faiz Baskısı + %30 TIPS Reel Faiz + %20 Petrol
-        """
-        # Büyüme (Kredi çöküyorsa büyüme pozitif çıkamaz!)
-        growth_vector = (0.35 * factors['Credit_Risk_Spread']) + \
-                        (0.35 * factors['Credit_Flight_Safety']) + \
-                        (0.15 * factors['Sector_Rotation']) + \
-                        (0.15 * factors['Copper_Gold'])
-
-        # Enflasyon / Likidite Sıkılığı
-        tightness_vector = (0.40 * factors['Bond_Yield_Pressure']) + \
-                           (0.35 * factors['Real_Yield_Shock']) + \
-                           (0.25 * factors['Gold_Oil'])
-
-        if growth_vector > 0 and tightness_vector <= 0:
-            return {
-                'name': "☀️ GOLDILOCKS (Güçlü Büyüme / Düşük Enflasyon)",
-                'css': "regime-goldilocks",
-                'desc': "Kredi piyasası sağlıklı, faiz baskısı yok. Hisse senetleri ve teknoloji için en ideal zemin."
-            }
-        elif growth_vector > 0 and tightness_vector > 0:
-            return {
-                'name': "🚀 REFLASYON (Güçlü Büyüme / Yükselen Enflasyon)",
-                'css': "regime-reflation",
-                'desc': "Kredi güçlü, talep yüksek. Sanayi metalleri, Gümüş ve Değer/Bankacılık hisseleri lider."
-            }
-        elif growth_vector <= 0 and tightness_vector > 0:
-            return {
-                'name': "🌋 STAGFLASYON & LİKİDİTE SIKIŞMASI (Kredi Stresi / Yüksek Faiz)",
-                'css': "regime-stagflation",
-                'desc': "Kredi piyasası ve büyüme baskı altında, faizler yüksek. Altın ve Nakit güvenli liman, hisseler kırılgan."
-            }
-        else:
-            return {
-                'name': "❄️ DEFLASYON / RESESYON (Düşük Büyüme / Düşen Faiz)",
-                'css': "regime-deflation",
-                'desc': "Büyüme çöküşte, faizler geriliyor. Uzun vadeli devlet tahvilleri en güçlü sığınak."
-            }
-
-    def compute_all_asset_scores(self, data):
+    def compute_all_asset_scores(self, df):
         scores = {}
         
-        # 1. v28 KİLİTLİ MAKRO İVMELERİ
-        spx_macro, spx_micro = self.calculate_v28_locked_momentum(data.get('SPX'))
-        nq_macro, nq_micro = self.calculate_v28_locked_momentum(data.get('NQ'))
-        xau_macro, xau_micro = self.calculate_v28_locked_momentum(data.get('XAU'))
-        xag_macro, xag_micro = self.calculate_v28_locked_momentum(data.get('XAG'))
+        # 1. HİZALANMIŞ ORTAK MAKRO RASYOLAR (Asla kaymaz)
+        copper_gold = self.calculate_peak_drawdown_velocity(df['COPPER'] / (df['XAU'] + 1e-6))
+        gold_oil = self.calculate_peak_drawdown_velocity(df['XAU'] / (df['OIL'] + 1e-6))
+        slv_gld = self.calculate_peak_drawdown_velocity(df['XAG'] / (df['XAU'] + 1e-6))
+        xme_gld = self.calculate_peak_drawdown_velocity(df['XME'] / (df['XAU'] + 1e-6))
         
-        btc_macro, _ = self.calculate_v28_locked_momentum(data.get('BTC'))
-        jpy_macro, _ = self.calculate_v28_locked_momentum(data.get('JPY'))
-        dxy_macro = -self.calculate_v28_locked_momentum(data.get('EUR'))[0]
-        yield_macro = -self.calculate_v28_locked_momentum(data.get('BONDS'))[0]
+        real_yield_shock = self.calculate_peak_drawdown_velocity(df['TIP'] / (df['TLT'] + 1e-6))
+        credit_risk = self.calculate_peak_drawdown_velocity(df['HYG'] / (df['LQD'] + 1e-6))
+        credit_flight = self.calculate_peak_drawdown_velocity(df['HYG'] / (df['TLT'] + 1e-6))
+        sector_rot = self.calculate_peak_drawdown_velocity(df['XLK'] / (df['XLF'] + 1e-6))
+        breadth = self.calculate_peak_drawdown_velocity(df['SPX'] / (df['RSP'] + 1e-6))
         
-        real_yield_shock = self.calculate_ratio_locked(data.get('TIP'), data.get('TLT'))
-        credit_risk = self.calculate_ratio_locked(data.get('HYG'), data.get('LQD'))
-        credit_flight = self.calculate_ratio_locked(data.get('HYG'), data.get('TLT'))
-        sector_rot = self.calculate_ratio_locked(data.get('XLK'), data.get('XLF'))
-        breadth = self.calculate_ratio_locked(data.get('SPX'), data.get('RSP'))
+        spx_mom = self.calculate_peak_drawdown_velocity(df['SPX'])
+        nq_mom = self.calculate_peak_drawdown_velocity(df['NQ'])
+        xau_mom = self.calculate_peak_drawdown_velocity(df['XAU'])
+        xag_mom = self.calculate_peak_drawdown_velocity(df['XAG'])
         
-        copper_gold = self.calculate_ratio_locked(data.get('COPPER'), data.get('XAU'))
-        gold_oil = self.calculate_ratio_locked(data.get('XAU'), data.get('OIL'))
-        slv_gld = self.calculate_ratio_locked(data.get('XAG'), data.get('XAU'))
-        xme_gld = self.calculate_ratio_locked(data.get('XME'), data.get('XAU'))
+        btc_mom = self.calculate_peak_drawdown_velocity(df['BTC'])
+        jpy_mom = self.calculate_peak_drawdown_velocity(df['JPY'])
+        dxy_mom = -self.calculate_peak_drawdown_velocity(df['EUR'])
+        yield_mom = -self.calculate_peak_drawdown_velocity(df['BONDS'])
 
-        factors_pool = {
-            'Credit_Risk_Spread': credit_risk, 'Credit_Flight_Safety': credit_flight,
-            'Sector_Rotation': sector_rot, 'Copper_Gold': copper_gold,
-            'Bond_Yield_Pressure': yield_macro, 'Real_Yield_Shock': real_yield_shock,
-            'Gold_Oil': gold_oil
-        }
+        # 2. GERÇEK MAKRO REJİM TESPİTİ
+        growth_v = (0.4 * credit_risk) + (0.3 * credit_flight) + (0.3 * copper_gold)
+        tightness_v = (0.5 * yield_mom) + (0.3 * dxy_mom) + (0.2 * real_yield_shock)
 
-        # HAKİKİ KREDİ AĞIRLIKLI REJİM TESPİTİ
-        regime_info = self.detect_true_macro_regime(factors_pool)
+        if growth_v < -0.3 and tightness_v > 0.3:
+            regime_info = {
+                'name': "⚡ KÜRESEL LİKİDİTE ÇÖKÜŞÜ / TOPLU SATIŞ (Systemic Liquidity Shock)",
+                'css': "regime-deflation",
+                'desc': "Tüm varlıklardan eşzamanlı nakde kaçış. Faiz ve Dolar baskısı tüm piyasayı aşağı çekiyor."
+            }
+        elif growth_v > 0 and tightness_v <= 0:
+            regime_info = {
+                'name': "☀️ GOLDILOCKS (Güçlü Büyüme / Düşük Enflasyon)",
+                'css': "regime-goldilocks",
+                'desc': "Kredi piyasası sağlıklı, hisseler güçlü."
+            }
+        elif growth_v > 0 and tightness_v > 0:
+            regime_info = {
+                'name': "🚀 REFLASYON (Güçlü Büyüme / Yüksek Enflasyon)",
+                'css': "regime-reflation",
+                'desc': "Emtialar ve değer hisseleri lider."
+            }
+        else:
+            regime_info = {
+                'name': "🌋 STAGFLASYON & SIKIŞMA (Kredi Stresi / Faiz Baskısı)",
+                'css': "regime-stagflation",
+                'desc': "Kredi piyasası ve büyüme baskı altında."
+            }
 
-        # ==========================================
-        # 2. HESAPLAMA MOTORU
-        # ==========================================
-        def build_result(base_weights, factors_dict, target_macro, target_micro):
+        # 3. HESAPLAMA MOTORU
+        def build_result(base_weights, factors_dict, target_mom):
             multipliers = {}
             for k, w in base_weights.items():
                 val = abs(factors_dict.get(k, 0.0))
@@ -225,7 +208,7 @@ class CreditDrivenMacroEngine:
                 contribution = val * (w / 100.0)
                 breakdown.append({
                     'Katman (Öncü Faktör)': k,
-                    'Makro İvme': round(val, 2),
+                    'Gerçek İvme': round(val, 2),
                     'Dinamik Ağırlık (%)': round(w, 1),
                     'Net Katkı': round(contribution, 3)
                 })
@@ -233,18 +216,13 @@ class CreditDrivenMacroEngine:
             breakdown_df = pd.DataFrame(breakdown).sort_values('Dinamik Ağırlık (%)', ascending=False)
             total_score = sum(factors_dict.get(k, 0.0) * (dyn_weights[k] / 100.0) for k in dyn_weights)
             
+            # Gerçek Yön Skoru
             final_score = np.tanh(total_score / 1.0) * 100
 
-            if final_score < -20 and target_micro > 1.2:
-                msg = "💎 DİRENÇ TESTİ (Aşırı Alım Tepesi - Sahte Yükseliş/Satış Fırsatı)"
-                css = "div-exhaust"
-            elif final_score > 20 and target_micro < -1.2:
-                msg = "💎 DESTEK TESTİ (Aşırı Satım Dibi - Sahte Düşüş/Alım Fırsatı)"
-                css = "div-exhaust"
-            elif final_score > 20:
+            if final_score > 15:
                 msg = "🚀 GÜÇLÜ BOĞA TRENDİ (4H Pozisyon Yönü: ALIM)"
                 css = "div-bull"
-            elif final_score < -20:
+            elif final_score < -15:
                 msg = "🩸 GÜÇLÜ AYI BASKISI (4H Pozisyon Yönü: SATIŞ)"
                 css = "div-bear"
             else:
@@ -253,78 +231,78 @@ class CreditDrivenMacroEngine:
 
             return {'score': final_score, 'table': breakdown_df, 'msg': msg, 'css': css}
 
-        # S&P 500
+        # S&P 500 MATRİSİ
         spx_factors = {
-            'SPX_Mom': spx_macro, 'Credit_Flight_Safety': credit_flight, 'Credit_Risk_Spread': credit_risk,
-            'Sector_Rotation': sector_rot, 'Carry_Trade': jpy_macro, 'BTC_Liquidity': btc_macro,
-            'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_macro, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_macro
+            'SPX_Mom': spx_mom, 'Credit_Flight_Safety': credit_flight, 'Credit_Risk_Spread': credit_risk,
+            'Sector_Rotation': sector_rot, 'Carry_Trade': jpy_mom, 'BTC_Liquidity': btc_mom,
+            'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_mom, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_mom
         }
         spx_base = {
             'SPX_Mom': 40.0, 'Credit_Flight_Safety': 15.0, 'Credit_Risk_Spread': 10.0,
             'Sector_Rotation': 10.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0,
             'Copper_Gold': 5.0, 'DXY_Pressure': -5.0, 'Real_Yield_Shock': -5.0, 'Bond_Yield_Pressure': -5.0
         }
-        scores['SPX'] = build_result(spx_base, spx_factors, spx_macro, spx_micro)
+        scores['SPX'] = build_result(spx_base, spx_factors, spx_mom)
 
-        # NASDAQ
+        # NASDAQ MATRİSİ
         nq_factors = {
-            'NQ_Mom': nq_macro, 'Sector_Rotation': sector_rot, 'Credit_Flight_Safety': credit_flight,
-            'Credit_Risk_Spread': credit_risk, 'Carry_Trade': jpy_macro, 'BTC_Liquidity': btc_macro,
-            'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_macro, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_macro
+            'NQ_Mom': nq_mom, 'Sector_Rotation': sector_rot, 'Credit_Flight_Safety': credit_flight,
+            'Credit_Risk_Spread': credit_risk, 'Carry_Trade': jpy_mom, 'BTC_Liquidity': btc_mom,
+            'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_mom, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_mom
         }
         nq_base = {
             'NQ_Mom': 40.0, 'Sector_Rotation': 15.0, 'Credit_Flight_Safety': 10.0,
             'Credit_Risk_Spread': 10.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0,
             'Copper_Gold': 5.0, 'DXY_Pressure': -5.0, 'Real_Yield_Shock': -5.0, 'Bond_Yield_Pressure': -5.0
         }
-        scores['NQ'] = build_result(nq_base, nq_factors, nq_macro, nq_micro)
+        scores['NQ'] = build_result(nq_base, nq_factors, nq_mom)
 
-        # ALTIN
+        # ALTIN MATRİSİ
         xau_factors = {
-            'XAU_Mom': xau_macro, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_macro,
-            'Bond_Yield_Pressure': yield_macro, 'Gold_Oil': gold_oil, 'SLV_GLD_Beta': slv_gld,
-            'Credit_Flight_Safety': credit_flight, 'Carry_Trade': jpy_macro, 'Copper_Gold': copper_gold, 'BTC_Liquidity': btc_macro
+            'XAU_Mom': xau_mom, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_mom,
+            'Bond_Yield_Pressure': yield_mom, 'Gold_Oil': gold_oil, 'SLV_GLD_Beta': slv_gld,
+            'Credit_Flight_Safety': credit_flight, 'Carry_Trade': jpy_mom, 'Copper_Gold': copper_gold, 'BTC_Liquidity': btc_mom
         }
         xau_base = {
             'XAU_Mom': 35.0, 'Real_Yield_Shock': 25.0, 'DXY_Pressure': -20.0,
             'Bond_Yield_Pressure': -15.0, 'Gold_Oil': 15.0, 'SLV_GLD_Beta': 10.0,
             'Credit_Flight_Safety': -5.0, 'Carry_Trade': 5.0, 'Copper_Gold': -3.0, 'BTC_Liquidity': -2.0
         }
-        scores['XAU'] = build_result(xau_base, xau_factors, xau_macro, xau_micro)
+        scores['XAU'] = build_result(xau_base, xau_factors, xau_mom)
 
-        # GÜMÜŞ
+        # GÜMÜŞ MATRİSİ
         xag_factors = {
-            'XAG_Mom': xag_macro, 'Copper_Gold': copper_gold, 'XME_GLD_Ratio': xme_gld,
-            'SLV_GLD_Beta': slv_gld, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_macro,
-            'BTC_Liquidity': btc_macro, 'Gold_Oil': gold_oil, 'Credit_Risk_Spread': credit_risk, 'Bond_Yield_Pressure': yield_macro
+            'XAG_Mom': xag_mom, 'Copper_Gold': copper_gold, 'XME_GLD_Ratio': xme_gld,
+            'SLV_GLD_Beta': slv_gld, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_mom,
+            'BTC_Liquidity': btc_mom, 'Gold_Oil': gold_oil, 'Credit_Risk_Spread': credit_risk, 'Bond_Yield_Pressure': yield_mom
         }
         xag_base = {
             'XAG_Mom': 35.0, 'Copper_Gold': 20.0, 'XME_GLD_Ratio': 20.0,
             'SLV_GLD_Beta': 10.0, 'Real_Yield_Shock': 10.0, 'DXY_Pressure': -10.0,
             'BTC_Liquidity': 5.0, 'Gold_Oil': 5.0, 'Credit_Risk_Spread': 5.0, 'Bond_Yield_Pressure': -5.0
         }
-        scores['XAG'] = build_result(xag_base, xag_factors, xag_macro, xag_micro)
+        scores['XAG'] = build_result(xag_base, xag_factors, xag_mom)
 
         return scores, regime_info
 
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = CreditDrivenMacroEngine()
+engine = RealityMacroEngine()
 
-st.title("🏛️ TIER-1 MASTER TERMINAL (v32.0)")
-st.markdown('<span class="status-badge">🛡️ CREDIT-DRIVEN MACRO REGIME ENGINE</span>', unsafe_allow_html=True)
-st.caption("Kredi Piyasası Ağırlıklı Hakiki Büyüme/Enflasyon Rejim Dedektörü")
+st.title("🏛️ TIER-1 REALITY TERMINAL (v33.0)")
+st.markdown('<span class="status-badge">⚡ PEAK-DRAWDOWN & SYNCHRONIZED GRID ENGINE</span>', unsafe_allow_html=True)
+st.caption("Ortak 15m Zaman Izgarası + Zirveden Düşüş Sapması (Asla Çöküşü Pozitif Okumaz)")
 
 try:
-    native_data = engine.fetch_all_native_data()
+    df_grid = engine.fetch_synchronized_grid()
     
-    if not native_data or len(native_data) < 3:
-        st.warning("Veriler güncelleniyor, lütfen bekleyin...")
+    if df_grid.empty or len(df_grid) < 24:
+        st.warning("Veriler 15m ızgarasında senkronize ediliyor, lütfen bekleyin...")
     else:
-        results, regime_info = engine.compute_all_asset_scores(native_data)
+        results, regime_info = engine.compute_all_asset_scores(df_grid)
 
-        # HAKİKİ MAKRO REJİM BANDI
+        # HAKİKİ REJİM BANDI
         st.markdown(f"""
         <div class="regime-box {regime_info['css']}">
             Mevcut Küresel Makro Rejim: {regime_info['name']}<br>
@@ -342,11 +320,11 @@ try:
 
             col1, col2 = st.columns([1, 2])
             with col1:
-                st.markdown(f"### {asset_title} 4H Ana Rotası")
+                st.markdown(f"### {asset_title} 4H Rotası")
                 
-                if score > 20:
+                if score > 15:
                     c = "#00E676"  # Yeşil (Boğa)
-                elif score < -20:
+                elif score < -15:
                     c = "#FF1744"  # Kırmızı (Ayı)
                 else:
                     c = "#ECEFF1"  # Beyaz (Nötr)
