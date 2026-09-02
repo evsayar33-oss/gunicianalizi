@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 MASTER BRAIN (v60.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 UNIFIED TERMINAL (v70.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -22,7 +22,7 @@ st.markdown("""
     .regime-reflation { background-color: #332200; color: #FFD600; border-color: #FFD600; }
     .regime-stagflation { background-color: #33001a; color: #FF4081; border-color: #FF4081; }
     .regime-deflation { background-color: #330000; color: #FF1744; border-color: #FF1744; }
-    .regime-mixed { background-color: #262000; color: #FFB300; border-color: #FFB300; }
+    .regime-neutral { background-color: #263238; color: #ECEFF1; border-color: #78909C; }
     .div-bull { background-color: #004D40; color: #00E676; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #00E676; font-size: 13px; display: inline-block; margin-top: 5px; }
     .div-bear { background-color: #4A148C; color: #FF1744; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #FF1744; font-size: 13px; display: inline-block; margin-top: 5px; }
     .div-neutral { background-color: #263238; color: #ECEFF1; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #78909C; font-size: 13px; display: inline-block; margin-top: 5px; }
@@ -30,12 +30,12 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # 1 dakikada bir otomatik yenile
-count = st_autorefresh(interval=60000, limit=None, key="macro_600_refresh")
+count = st_autorefresh(interval=60000, limit=None, key="macro_700_refresh")
 
 # ==========================================
-# 2. OTONOM ÖĞRENEN QUANT BEYNİ (v60.0)
+# 2. BÜTÜNLEŞİK QUANT MAKRO MOTORU (v70.0)
 # ==========================================
-class MasterMacroBrain:
+class UnifiedMacroEngine:
     def __init__(self):
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
@@ -91,142 +91,89 @@ class MasterMacroBrain:
         df = df.resample('15min').last().ffill().bfill().dropna()
         return df
 
-    def calculate_kinetic_series(self, s):
-        """15m (%50) + 1H (%30) + 4H (%20) Kinetik İvme Serisi."""
+    def calculate_daily_momentum(self, s):
+        """Günün ve 4 Saatin Sarsılmaz Ana Makro İvmesi."""
         if s is None or len(s) < 32:
-            return pd.Series(0.0, index=s.index if s is not None else [0])
-        
-        r15m = s.pct_change(1).fillna(0)
-        r1h  = s.pct_change(4).fillna(0)
-        r4h  = s.pct_change(16).fillna(0)
-        
-        kinetic_series = (0.50 * r15m) + (0.30 * r1h) + (0.20 * r4h)
-        vol = s.pct_change().rolling(32, min_periods=4).std().fillna(0.003)
-        sharpe_series = kinetic_series / (vol + 1e-5)
-        return sharpe_series.clip(-2.5, 2.5)
-
-    def calculate_ratio_kinetic_series(self, s1, s2):
-        if s1 is None or s2 is None or s1.empty or s2.empty:
-            return pd.Series(0.0, index=s1.index if s1 is not None else [0])
-        common_idx = s1.index.intersection(s2.index)
-        ratio = s1.loc[common_idx] / (s2.loc[common_idx] + 1e-6)
-        return self.calculate_kinetic_series(ratio)
-
-    def compute_online_learning_ic(self, factor_series, target_price_series, lag=4, window=48):
-        """
-        WALK-FORWARD ML (ONLINE IC LEARNING):
-        Faktörün son 12 saatteki tahmin doğruluğunu ölçer.
-        """
-        if len(factor_series) < window + lag or len(target_price_series) < window + lag:
             return 0.0
         
-        target_fwd_ret = target_price_series.pct_change(lag).shift(-lag).tail(window)
-        f_past_signal  = factor_series.tail(window)
+        # Günlük Getiri (~32 bar) + 4 Saatlik Trend (~16 bar)
+        r_daily = (s.iloc[-1] / s.iloc[-32]) - 1.0
+        r_4h    = (s.iloc[-1] / s.iloc[-17]) - 1.0
+        r_1h    = (s.iloc[-1] / s.iloc[-5])  - 1.0
         
-        valid_mask = ~(target_fwd_ret.isna() | f_past_signal.isna())
-        if valid_mask.sum() < 12:
-            return 0.0
+        # Günlük Makro Ağırlık: %50 Günlük + %30 4H + %20 1H
+        macro_mom = (0.50 * r_daily) + (0.30 * r_4h) + (0.20 * r_1h)
+        
+        pct = s.pct_change().dropna()
+        vol = pct.tail(32).std()
+        if pd.isna(vol) or vol < 1e-5:
+            vol = 0.0035
             
-        corr = f_past_signal[valid_mask].corr(target_fwd_ret[valid_mask])
-        return float(np.clip(0.0 if pd.isna(corr) else corr, -0.9, 0.9))
-
-    def detect_consensus_macro_regime(self, factors):
-        spx = factors['SPX_Mom'].iloc[-1]
-        nq = factors['NQ_Mom'].iloc[-1]
-        copper = factors['Copper_Gold'].iloc[-1]
-        sector = factors['Sector_Rotation'].iloc[-1]
-        dxy = factors['DXY_Pressure'].iloc[-1]
-        yields = factors['Bond_Yield_Pressure'].iloc[-1]
-        credit = factors['Credit_Risk_Spread'].iloc[-1]
-
-        # 1. Geniş Tabanlı Boğa (Teknoloji ve Büyüme katılımı ZORUNLU)
-        if spx > 0.3 and nq > 0.3 and sector >= -0.5 and copper >= -0.5 and dxy <= 0.5:
-            return {'name': "☀️ GENİŞ TABANLI BOĞA RALLİSİ (Goldilocks)", 'css': "regime-goldilocks", 'desc': "Teknoloji ve sanayi katılımıyla genişleyen sağlıklı küresel ralli."}
-        
-        # 2. Seçici / Savunmacı Dolar Gevşemesi
-        elif dxy < -0.5 and (sector < -0.6 or copper < -0.6):
-            return {'name': "⚠️ SEÇİCİ DOLAR GEVŞEMESİ & SAVUNMACI ROTASYON", 'css': "regime-mixed", 'desc': "Dolar düşüşü hisselere taban sağlıyor ancak Teknoloji ve Sanayi zayıf. Ralli seçici."}
-
-        # 3. Reflasyon (Sanayi & Emtia Liderliği)
-        elif copper > 0.8 and factors['Gold_Oil'].iloc[-1] > 0 and spx > 0:
-            return {'name': "🚀 REFLASYON (Güçlü Büyüme & Sanayi Emtiası Liderliği)", 'css': "regime-reflation", 'desc': "Gümüş ve Bakır küresel büyümeyi fiyatlıyor."}
-
-        # 4. Stagflasyon & Faiz Baskısı
-        elif yields > 0.8 and (spx < 0 or nq < 0):
-            return {'name': "🌋 STAGFLASYON & LİKİDİTE SIKIŞMASI", 'css': "regime-stagflation", 'desc': "Yükselen faizler hisse değerlemelerini baskılıyor."}
-
-        # 5. Deflasyonist Çöküş
-        elif spx < -0.5 and credit < -0.8:
-            return {'name': "❄️ DEFLASYONİST ÇÖKÜŞ & KREDİ KRİZİ", 'css': "regime-deflation", 'desc': "Tüm riskli varlıklardan nakde kaçış."}
-
-        else:
-            return {'name': "⚪ DENGELİ GEÇİŞ REJİMİ (Konsolidasyon)", 'css': "regime-goldilocks", 'desc': "Piyasa ana kırılım öncesinde dengeli konsolide oluyor."}
+        sharpe = macro_mom / vol
+        return float(np.clip(sharpe, -2.5, 2.5))
 
     def compute_all_asset_scores(self, df):
         scores = {}
         
-        # 1. TÜM KİNETİK SERİLER
-        spx_mom = self.calculate_kinetic_series(df['SPX'])
-        nq_mom = self.calculate_kinetic_series(df['NQ'])
-        xau_mom = self.calculate_kinetic_series(df['XAU'])
-        xag_mom = self.calculate_kinetic_series(df['XAG'])
-        
-        btc_mom = self.calculate_kinetic_series(df['BTC'])
-        jpy_mom = self.calculate_kinetic_series(df['JPY'])
-        dxy_mom = -self.calculate_kinetic_series(df['EUR'])
-        yield_mom = -self.calculate_kinetic_series(df['BONDS_10Y'])
-        
-        copper_gold = self.calculate_ratio_kinetic_series(df['COPPER'], df['XAU'])
-        gold_oil = self.calculate_ratio_kinetic_series(df['XAU'], df['OIL'])
-        slv_gld = self.calculate_ratio_kinetic_series(df['XAG'], df['XAU'])
-        xme_gld = self.calculate_ratio_kinetic_series(df['XME'], df['XAU'])
-        
-        credit_risk = self.calculate_ratio_kinetic_series(df['HYG'], df['LQD'])
-        credit_flight = self.calculate_ratio_kinetic_series(df['HYG'], df['BONDS_30Y'])
-        sector_rot = self.calculate_ratio_kinetic_series(df['XLK'], df['XLF'])
-        real_yield_shock = self.calculate_ratio_kinetic_series(df['BONDS_10Y'], df['BONDS_30Y'])
+        # 1. GÜNLÜK VE HAFTALIK SARSILMAZ MAKRO ÇAPALAR
+        dxy_macro = -self.calculate_daily_momentum(df['EUR'])          # Dolar Gücü
+        yield_macro = -self.calculate_daily_momentum(df['BONDS_10Y'])   # 10Y Faiz
+        credit_risk = self.calculate_daily_momentum(df['HYG'] / (df['LQD'] + 1e-6)) # Kredi Stresi
+        real_yield_shock = self.calculate_daily_momentum(df['BONDS_10Y'] / (df['BONDS_30Y'] + 1e-6)) # Reel Faiz
+        copper_gold = self.calculate_daily_momentum(df['COPPER'] / (df['XAU'] + 1e-6))
+        gold_oil = self.calculate_daily_momentum(df['XAU'] / (df['OIL'] + 1e-6))
+        slv_gld = self.calculate_daily_momentum(df['XAG'] / (df['XAU'] + 1e-6))
+        xme_gld = self.calculate_daily_momentum(df['XME'] / (df['XAU'] + 1e-6))
+        sector_rot = self.calculate_daily_momentum(df['XLK'] / (df['XLF'] + 1e-6))
+        carry_macro = self.calculate_daily_momentum(df['JPY'])
+        btc_macro = self.calculate_daily_momentum(df['BTC'])
 
-        factors_series_pool = {
-            'SPX_Mom': spx_mom, 'NQ_Mom': nq_mom, 'XAU_Mom': xau_mom, 'XAG_Mom': xag_mom,
-            'Copper_Gold': copper_gold, 'Gold_Oil': gold_oil, 'SLV_GLD_Beta': slv_gld,
-            'XME_GLD_Ratio': xme_gld, 'Credit_Risk_Spread': credit_risk, 'Credit_Flight_Safety': credit_flight,
-            'Sector_Rotation': sector_rot, 'Real_Yield_Shock': real_yield_shock,
-            'DXY_Pressure': dxy_mom, 'Bond_Yield_Pressure': yield_mom, 'BTC_Liquidity': btc_mom, 'Carry_Trade': jpy_mom
-        }
-
-        # REJİM KONSENSÜSÜ
-        regime_info = self.detect_consensus_macro_regime(factors_series_pool)
+        # 2. HAM FİYAT İVMELERİ
+        raw_spx = self.calculate_daily_momentum(df['SPX'])
+        raw_nq  = self.calculate_daily_momentum(df['NQ'])
+        raw_xau = self.calculate_daily_momentum(df['XAU'])
+        raw_xag = self.calculate_daily_momentum(df['XAG'])
 
         # ==========================================
-        # 2. OTONOM ÖĞRENEN & TAVAN KORUMALI MOTOR
+        # 3. VARLIK SINIFI EŞBÜTÜNLEŞMESİ (SENKRONİZASYON)
         # ==========================================
-        def build_master_result(base_weights, target_sym, target_mom_val):
-            target_price_series = df[target_sym]
-            
+        # A) HİSSE SENEDİ PAZAR MOTORU (S&P 500 ve NASDAQ Asla Zıt Renk Yakamaz)
+        equity_market_momentum = (0.50 * raw_spx) + (0.50 * raw_nq)
+        spx_mom = (0.80 * equity_market_momentum) + (0.20 * raw_spx)
+        nq_mom  = (0.80 * equity_market_momentum) + (0.20 * raw_nq)
+
+        # B) DEĞERLİ MADENLER MOTORU (Altın ve Gümüş Asla Zıt Renk Yakamaz)
+        metals_market_momentum = (0.50 * raw_xau) + (0.50 * raw_xag)
+        xau_mom = (0.80 * metals_market_momentum) + (0.20 * raw_xau)
+        xag_mom = (0.80 * metals_market_momentum) + (0.20 * raw_xag)
+
+        # 4. GÜNLÜK HAKİKİ MAKRO REJİM
+        growth_v = (0.4 * credit_risk) + (0.3 * copper_gold) + (0.3 * equity_market_momentum)
+        tightness_v = (0.5 * yield_macro) + (0.5 * dxy_macro)
+
+        if growth_v > 0.2 and tightness_v <= 0:
+            regime_info = {'name': "☀️ GÜNLÜK BOĞA RALLİSİ (Goldilocks)", 'css': "regime-goldilocks", 'desc': "Dolar ve faizler sakin, hisseler ve büyüme varlıkları güçlü alıcılı."}
+        elif growth_v > 0.2 and tightness_v > 0.2:
+            regime_info = {'name': "🚀 REFLASYON (Güçlü Büyüme & Emtia)", 'css': "regime-reflation", 'desc': "Gümüş, Bakır ve Sanayi hisseleri küresel büyümeyi fiyatlıyor."}
+        elif growth_v <= 0.2 and tightness_v > 0.2:
+            regime_info = {'name': "🌋 STAGFLASYON & LİKİDİTE SIKIŞMASI", 'css': "regime-stagflation", 'desc': "Dolar ve Faiz baskısı hisseleri ve emtiaları baskılıyor."}
+        elif growth_v < -0.3 and tightness_v <= 0:
+            regime_info = {'name': "❄️ DEFLASYON / KRİZ (Toplu Satış Baskısı)", 'css': "regime-deflation", 'desc': "Nakit güvenli liman, riskli varlıklardan kaçış."}
+        else:
+            regime_info = {'name': "⚪ DENGELİ GÜNLÜK GEÇİŞ REJİMİ (Konsolidasyon)", 'css': "regime-neutral", 'desc': "Piyasa gün içi dengeli ve yönsüz konsolide oluyor."}
+
+        # 5. HESAPLAMA MOTORU
+        def build_unified_result(base_weights, factors_dict):
             multipliers = {}
-            for k, w_base in base_weights.items():
-                f_s = factors_series_pool[k]
-                latest_val = abs(f_s.iloc[-1])
-                ic = self.compute_online_learning_ic(f_s, target_price_series)
-                sign = 1.0 if w_base >= 0 else -1.0
-                
-                # Canlı IC / PnL Öğrenme Çarpanı
-                learning_factor = np.exp(sign * ic * 0.8)
-                shock_boost = (1.0 + (min(latest_val, 2.0) ** 0.8))
-                multipliers[k] = abs(w_base) * learning_factor * shock_boost
-
+            for k, w in base_weights.items():
+                val = abs(factors_dict.get(k, 0.0))
+                multipliers[k] = abs(w) * (1.0 + (min(val, 2.0) ** 0.8))
+            
             total_att = sum(multipliers.values()) + 1e-6
             dyn_weights = {}
-            for k, w_base in base_weights.items():
-                sign = 1.0 if w_base >= 0 else -1.0
+            for k, w in base_weights.items():
+                sign = 1.0 if w >= 0 else -1.0
                 raw_norm = (multipliers[k] / total_att) * 100.0
-                
-                # Fiyat İvmesine en az %35 Taban, Dış Rasyolara en fazla %15 Tavan!
-                if '_Mom' in k:
-                    raw_norm = max(raw_norm, 35.0)
-                else:
-                    raw_norm = min(raw_norm, 15.0)
-                    
                 dyn_weights[k] = raw_norm * sign
 
             total_actual = sum(abs(v) for v in dyn_weights.values()) + 1e-6
@@ -235,24 +182,27 @@ class MasterMacroBrain:
 
             breakdown = []
             for k, w in dyn_weights.items():
-                val = factors_series_pool[k].iloc[-1]
+                val = factors_dict.get(k, 0.0)
                 contribution = val * (w / 100.0)
                 breakdown.append({
                     'Katman (Öncü Faktör)': k,
-                    'Kinetik İvme': round(val, 2),
-                    'Öğrenilmiş Ağırlık (%)': round(w, 1),
+                    'Günlük Makro İvme': round(val, 2),
+                    'Dinamik Ağırlık (%)': round(w, 1),
                     'Net Katkı': round(contribution, 3)
                 })
 
-            breakdown_df = pd.DataFrame(breakdown).sort_values('Öğrenilmiş Ağırlık (%)', ascending=False)
-            total_score = sum(factors_series_pool[k].iloc[-1] * (dyn_weights[k] / 100.0) for k in dyn_weights)
-            final_score = np.tanh(total_score / 1.1) * 100
+            breakdown_df = pd.DataFrame(breakdown).sort_values('Dinamik Ağırlık (%)', ascending=False)
+            total_score = sum(factors_dict.get(k, 0.0) * (dyn_weights[k] / 100.0) for k in dyn_weights)
+            
+            # Sarsılmaz 1.4 Böleni
+            final_score = np.tanh(total_score / 1.4) * 100
 
+            # GÜVEN EŞİĞİ (±15 Nötr Alanı)
             if final_score > 15:
-                msg = "🚀 GÜÇLÜ BOĞA TRENDİ (Alıcılar ve Öğrenilmiş Makro Güç Hakim)"
+                msg = "🚀 GÜÇLÜ BOĞA TRENDİ (4H Pozisyon Yönü: ALIM)"
                 css = "div-bull"
             elif final_score < -15:
-                msg = "🩸 GÜÇLÜ AYI BASKISI (Satıcılar ve Makro Fren Üstün)"
+                msg = "🩸 GÜÇLÜ AYI BASKISI (4H Pozisyon Yönü: SATIŞ)"
                 css = "div-bear"
             else:
                 msg = "⚪ DENGELİ KONSOLİDASYON (Piyasa Yönsüz / Bekle)"
@@ -260,51 +210,72 @@ class MasterMacroBrain:
 
             return {'score': final_score, 'table': breakdown_df, 'msg': msg, 'css': css}
 
-        # ----------------------------------------------------
-        # 10 KATMANLI EKSİKSİZ KURUMSAL MATRİSLER (HEPSİ GERİ GELDİ)
-        # ----------------------------------------------------
-        # 1. GÜMÜŞ (XAG)
-        xag_base = {
-            'XAG_Mom': 35.0, 'Copper_Gold': 15.0, 'XME_GLD_Ratio': 15.0,
-            'SLV_GLD_Beta': 10.0, 'Real_Yield_Shock': 10.0, 'DXY_Pressure': -10.0,
-            'BTC_Liquidity': 5.0, 'Gold_Oil': 5.0, 'Credit_Risk_Spread': 5.0, 'Bond_Yield_Pressure': -5.0
+        # S&P 500
+        spx_factors = {
+            'SPX_Mom': spx_mom, 'Credit_Risk_Spread': credit_risk,
+            'Bond_Yield_Pressure': yield_macro, 'DXY_Pressure': dxy_macro,
+            'Sector_Rotation': sector_rot, 'Copper_Gold': copper_gold,
+            'Carry_Trade': carry_macro, 'BTC_Liquidity': btc_macro,
+            'Real_Yield_Shock': real_yield_shock
         }
-        scores['XAG'] = build_master_result(xag_base, 'XAG', xag_mom.iloc[-1])
-
-        # 2. ALTIN (XAU)
-        xau_base = {
-            'XAU_Mom': 35.0, 'Real_Yield_Shock': 25.0, 'DXY_Pressure': -20.0,
-            'Bond_Yield_Pressure': -15.0, 'Gold_Oil': 15.0, 'SLV_GLD_Beta': 10.0,
-            'Credit_Flight_Safety': -5.0, 'Carry_Trade': 5.0, 'Copper_Gold': -3.0, 'BTC_Liquidity': -2.0
-        }
-        scores['XAU'] = build_master_result(xau_base, 'XAU', xau_mom.iloc[-1])
-
-        # 3. S&P 500 (SPX)
         spx_base = {
-            'SPX_Mom': 35.0, 'Credit_Flight_Safety': 15.0, 'Credit_Risk_Spread': 15.0,
-            'Sector_Rotation': 10.0, 'Carry_Trade': 10.0, 'BTC_Liquidity': 5.0,
-            'Copper_Gold': 5.0, 'DXY_Pressure': -5.0, 'Real_Yield_Shock': -5.0, 'Bond_Yield_Pressure': -5.0
+            'SPX_Mom': 40.0, 'Credit_Risk_Spread': 20.0, 'Bond_Yield_Pressure': -15.0,
+            'DXY_Pressure': -10.0, 'Sector_Rotation': 5.0, 'Copper_Gold': 5.0,
+            'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0, 'Real_Yield_Shock': -5.0
         }
-        scores['SPX'] = build_master_result(spx_base, 'SPX', spx_mom.iloc[-1])
+        scores['SPX'] = build_unified_result(spx_base, spx_factors)
 
-        # 4. NASDAQ (NQ)
-        nq_base = {
-            'NQ_Mom': 35.0, 'Sector_Rotation': 20.0, 'Credit_Flight_Safety': 10.0,
-            'Credit_Risk_Spread': 10.0, 'Carry_Trade': 10.0, 'BTC_Liquidity': 5.0,
-            'Copper_Gold': 5.0, 'DXY_Pressure': -5.0, 'Real_Yield_Shock': -5.0, 'Bond_Yield_Pressure': -5.0
+        # NASDAQ (S&P İle Birebir Uyumlu Simetrik Model)
+        nq_factors = {
+            'NQ_Mom': nq_mom, 'Bond_Yield_Pressure': yield_macro,
+            'Credit_Risk_Spread': credit_risk, 'DXY_Pressure': dxy_macro,
+            'Sector_Rotation': sector_rot, 'Copper_Gold': copper_gold,
+            'Carry_Trade': carry_macro, 'BTC_Liquidity': btc_macro,
+            'Real_Yield_Shock': real_yield_shock
         }
-        scores['NQ'] = build_master_result(nq_base, 'NQ', nq_mom.iloc[-1])
+        nq_base = {
+            'NQ_Mom': 40.0, 'Bond_Yield_Pressure': -20.0, 'Credit_Risk_Spread': 15.0,
+            'DXY_Pressure': -10.0, 'Sector_Rotation': 5.0, 'Copper_Gold': 5.0,
+            'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0, 'Real_Yield_Shock': -5.0
+        }
+        scores['NQ'] = build_unified_result(nq_base, nq_factors)
+
+        # ALTIN
+        xau_factors = {
+            'XAU_Mom': xau_mom, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_macro,
+            'Bond_Yield_Pressure': yield_macro, 'Gold_Oil': gold_oil, 'SLV_GLD_Beta': slv_gld,
+            'Copper_Gold': copper_gold, 'Carry_Trade': carry_macro, 'BTC_Liquidity': btc_macro
+        }
+        xau_base = {
+            'XAU_Mom': 40.0, 'Real_Yield_Shock': 25.0, 'DXY_Pressure': -20.0,
+            'Bond_Yield_Pressure': -15.0, 'Gold_Oil': 10.0, 'SLV_GLD_Beta': 5.0,
+            'Copper_Gold': -3.0, 'Carry_Trade': 3.0, 'BTC_Liquidity': -2.0
+        }
+        scores['XAU'] = build_unified_result(xau_base, xau_factors)
+
+        # GÜMÜŞ (Altın İle Birebir Uyumlu Model)
+        xag_factors = {
+            'XAG_Mom': xag_mom, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_macro,
+            'Bond_Yield_Pressure': yield_macro, 'Copper_Gold': copper_gold, 'XME_GLD_Ratio': xme_gld,
+            'SLV_GLD_Beta': slv_gld, 'Gold_Oil': gold_oil, 'BTC_Liquidity': btc_macro
+        }
+        xag_base = {
+            'XAG_Mom': 40.0, 'Real_Yield_Shock': 20.0, 'DXY_Pressure': -15.0,
+            'Bond_Yield_Pressure': -10.0, 'Copper_Gold': 10.0, 'XME_GLD_Ratio': 10.0,
+            'SLV_GLD_Beta': 5.0, 'Gold_Oil': 5.0, 'BTC_Liquidity': 5.0
+        }
+        scores['XAG'] = build_unified_result(xag_base, xag_factors)
 
         return scores, regime_info
 
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = MasterMacroBrain()
+engine = UnifiedMacroEngine()
 
-st.title("🏛️ TIER-1 MASTER BRAIN (v60.0)")
-st.markdown('<span class="status-badge">🧠 AUTONOMOUS 10-LAYER ONLINE LEARNING ENGINE</span>', unsafe_allow_html=True)
-st.caption("Eksiksiz 10-Katmanlı Canlı Matris + Tahmin İsabetine Göre Kendi Kendine Öğrenen Zeka")
+st.title("🏛️ TIER-1 UNIFIED TERMINAL (v70.0)")
+st.markdown('<span class="status-badge">🛡️ ASSET-CLASS CO-INTEGRATION & DAILY MACRO</span>', unsafe_allow_html=True)
+st.caption("Günün & Haftanın Sarsılmaz Makrosu + Kardeş Varlıkların %100 Senkronizasyonu")
 
 try:
     df_grid = engine.fetch_synchronized_grid()
@@ -314,7 +285,7 @@ try:
     else:
         results, regime_info = engine.compute_all_asset_scores(df_grid)
 
-        # KONSENSÜS MAKRO REJİM BANDI
+        # GÜNLÜK HAKİKİ REJİM BANDI
         st.markdown(f"""
         <div class="regime-box {regime_info['css']}">
             Mevcut Küresel Makro Rejim: {regime_info['name']}<br>
@@ -347,8 +318,8 @@ try:
             with col2:
                 if not table.empty:
                     fig = go.Figure(go.Bar(
-                        x=table['Öğrenilmiş Ağırlık (%)'], y=table['Katman (Öncü Faktör)'], orientation='h',
-                        marker_color=np.where(table['Öğrenilmiş Ağırlık (%)'] > 0, '#00E676', '#FF1744')
+                        x=table['Dinamik Ağırlık (%)'], y=table['Katman (Öncü Faktör)'], orientation='h',
+                        marker_color=np.where(table['Dinamik Ağırlık (%)'] > 0, '#00E676', '#FF1744')
                     ))
                     fig.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=280, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#CFD8DC', size=10))
                     st.plotly_chart(fig, use_container_width=True)
