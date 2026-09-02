@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v80.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v90.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -36,12 +36,12 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # 1 dakikada bir otomatik yenile
-count = st_autorefresh(interval=60000, limit=None, key="macro_800_refresh")
+count = st_autorefresh(interval=60000, limit=None, key="macro_900_refresh")
 
 # ==========================================
-# 2. TAM OTONOM ADAPTİF QUANT MOTORU (v80.0)
+# 2. FED POLİTİKA VE QUANT MAKRO MOTORU (v90.0)
 # ==========================================
-class SingularityMacroEngine:
+class FedPivotMacroEngine:
     def __init__(self):
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
@@ -53,6 +53,7 @@ class SingularityMacroEngine:
             'EURUSD=X': 'EUR',      # Dolar Gücü (Ters DXY)
             'USDJPY=X': 'JPY',      # Carry Trade
             'BTC-USD': 'BTC',       # 24/7 Global Likidite
+            'ZT=F': 'BONDS_2Y',     # YENİ: 2Y Hazine Vadeli (Fed Faiz İndirim Radarı)
             'ZN=F': 'BONDS_10Y',    # 10Y Hazine Vadeli
             'ZB=F': 'BONDS_30Y',    # 30Y Uzun Vade Vadeli
             'HYG': 'HYG',           # Junk Kredi
@@ -88,7 +89,7 @@ class SingularityMacroEngine:
             if not s.empty:
                 raw_dict[alias] = s
 
-        with ThreadPoolExecutor(max_workers=16) as executor:
+        with ThreadPoolExecutor(max_workers=18) as executor:
             for sym, alias in _self.symbol_map.items():
                 executor.submit(worker, sym, alias)
 
@@ -98,7 +99,6 @@ class SingularityMacroEngine:
         return df
 
     def calculate_daily_momentum_series(self, s):
-        """Her bar için pürüzsüz çoklu-zaman dilimli ivme serisi üretir."""
         if s is None or len(s) < 32:
             return pd.Series(0.0, index=s.index if s is not None else [0])
         
@@ -121,13 +121,12 @@ class SingularityMacroEngine:
     def compute_all_asset_scores(self, df):
         scores = {}
         
-        # 1. TÜM GÖSTERGELERİN CANLI ZAMAN SERİLERİ
+        # 1. TÜM GÖSTERGELERİN SERİLERİ
         raw_spx = self.calculate_daily_momentum_series(df['SPX'])
         raw_nq  = self.calculate_daily_momentum_series(df['NQ'])
         raw_xau = self.calculate_daily_momentum_series(df['XAU'])
         raw_xag = self.calculate_daily_momentum_series(df['XAG'])
 
-        # Varlık Sınıfı Eşbütünleşmesi (Kardeş Varlıklar)
         equity_common = (0.50 * raw_spx) + (0.50 * raw_nq)
         spx_mom = (0.80 * equity_common) + (0.20 * raw_spx)
         nq_mom  = (0.80 * equity_common) + (0.20 * raw_nq)
@@ -139,7 +138,10 @@ class SingularityMacroEngine:
         btc_macro = self.calculate_daily_momentum_series(df['BTC'])
         jpy_macro = self.calculate_daily_momentum_series(df['JPY'])
         dxy_macro = -self.calculate_daily_momentum_series(df['EUR'])
-        yield_macro = -self.calculate_daily_momentum_series(df['BONDS_10Y'])
+        
+        # 2Y (FED POLİTİKASI) VE 10Y (UZUN VADE) FAİZ BASKISI
+        fed_pivot_pressure = -self.calculate_daily_momentum_series(df['BONDS_2Y'])   # 2Y Getiri Baskısı (Düşüşü = Fed İndirimi)
+        yield_macro = -self.calculate_daily_momentum_series(df['BONDS_10Y'])         # 10Y Getiri Baskısı
         
         credit_risk = self.calculate_ratio_momentum_series(df['HYG'], df['LQD'])
         real_yield_shock = self.calculate_ratio_momentum_series(df['BONDS_10Y'], df['BONDS_30Y'])
@@ -151,20 +153,20 @@ class SingularityMacroEngine:
 
         factors_series_pool = {
             'SPX_Mom': spx_mom, 'NQ_Mom': nq_mom, 'XAU_Mom': xau_mom, 'XAG_Mom': xag_mom,
+            'Fed_Pivot_Pressure': fed_pivot_pressure, 'Bond_Yield_Pressure': yield_macro,
+            'DXY_Pressure': dxy_macro, 'Real_Yield_Shock': real_yield_shock,
+            'Credit_Risk_Spread': credit_risk, 'Sector_Rotation': sector_rot,
             'Copper_Gold': copper_gold, 'Gold_Oil': gold_oil, 'SLV_GLD_Beta': slv_gld,
-            'XME_GLD_Ratio': xme_gld, 'Credit_Risk_Spread': credit_risk,
-            'Sector_Rotation': sector_rot, 'Real_Yield_Shock': real_yield_shock,
-            'DXY_Pressure': dxy_macro, 'Bond_Yield_Pressure': yield_macro,
-            'BTC_Liquidity': btc_macro, 'Carry_Trade': jpy_macro
+            'XME_GLD_Ratio': xme_gld, 'BTC_Liquidity': btc_macro, 'Carry_Trade': jpy_macro
         }
 
         # ==========================================================
-        # 2. ÖZ-NORMALİZASYONLU ADAPTİF MAKRO REJİM MOTORU (Zero-Constant)
+        # 2. FED POLİTİKA GÜDÜMLÜ ADAPTİF MAKRO REJİM MOTORU
         # ==========================================================
         growth_raw = (0.4 * credit_risk) + (0.3 * copper_gold) + (0.3 * equity_common)
-        tightness_raw = (0.5 * yield_macro) + (0.5 * dxy_macro)
+        # Sıkılık artık doğrudan 2Y Fed İndirim Beklentisini ve 10Y Faizleri içerir
+        tightness_raw = (0.4 * fed_pivot_pressure) + (0.3 * yield_macro) + (0.3 * dxy_macro)
 
-        # Büyüme ve Sıkılık Vektörlerinin Kendi Standart Sapması
         g_vol = growth_raw.tail(64).std() if len(growth_raw) >= 64 else 0.5
         t_vol = tightness_raw.tail(64).std() if len(tightness_raw) >= 64 else 0.5
         
@@ -172,23 +174,22 @@ class SingularityMacroEngine:
         z_tightness = tightness_raw.iloc[-1] / (t_vol + 1e-5)
 
         if z_growth > 0.4 and z_tightness <= 0.0:
-            regime_info = {'name': "☀️ GÜNLÜK BOĞA RALLİSİ (Goldilocks)", 'css': "regime-goldilocks", 'desc': "Dolar ve faizler sakin, hisseler ve büyüme varlıkları güçlü alıcılı."}
+            regime_info = {'name': "☀️ GOLDILOCKS & FED LİKİDİTE GENİŞLEMESİ", 'css': "regime-goldilocks", 'desc': "Fed faiz baskısı kalktı, Dolar sakin. Hisse senetleri ve teknoloji için ideal ralli ortamı."}
         elif z_growth > 0.4 and z_tightness > 0.4:
-            regime_info = {'name': "🚀 REFLASYON (Güçlü Büyüme & Emtia)", 'css': "regime-reflation", 'desc': "Gümüş, Bakır ve Sanayi hisseleri küresel büyümeyi fiyatlıyor."}
+            regime_info = {'name': "🚀 REFLASYON (Güçlü Büyüme & Emtia Patlaması)", 'css': "regime-reflation", 'desc': "Gümüş, Bakır ve Sanayi hisseleri küresel büyümeyi fiyatlıyor."}
         elif z_growth <= 0.4 and z_tightness > 0.4:
-            regime_info = {'name': "🌋 STAGFLASYON & LİKİDİTE SIKIŞMASI", 'css': "regime-stagflation", 'desc': "Dolar ve Faiz baskısı hisseleri ve emtiaları baskılıyor."}
+            regime_info = {'name': "🌋 STAGFLASYON & FED ŞAHİN SIKIŞMASI", 'css': "regime-stagflation", 'desc': "2Y ve 10Y faizler yüksek, Fed baskısı hisseleri ve değerlemeleri eziyor."}
         elif z_growth < -0.5 and z_tightness <= 0.0:
-            regime_info = {'name': "❄️ DEFLASYON / KRİZ (Toplu Satış Baskısı)", 'css': "regime-deflation", 'desc': "Nakit güvenli liman, riskli varlıklardan kaçış."}
+            regime_info = {'name': "❄️ DEFLASYON / RESESYON KRİZİ", 'css': "regime-deflation", 'desc': "Büyüme çöküşte, Fed panik indirimi fiyatlamasında. Nakit ve devlet tahvilleri sığınak."}
         else:
-            regime_info = {'name': "⚪ DENGELİ GÜNLÜK GEÇİŞ REJİMİ (Konsolidasyon)", 'css': "regime-neutral", 'desc': "Piyasa gün içi dengeli ve yönsüz konsolide oluyor."}
+            regime_info = {'name': "⚪ DENGELİ GEÇİŞ REJİMİ (Konsolidasyon)", 'css': "regime-neutral", 'desc': "Piyasa Fed beklentileri öncesinde dengeli konsolide oluyor."}
 
         # ==========================================================
-        # 3. DİNAMİK YÜZDELİK DİLİM (ROLLING QUANTILE) EŞİK MOTORU
+        # 3. DİNAMİK YÜZDELİK DİLİM (QUANTILE) HESAPLAMA MOTORU
         # ==========================================================
-        def build_singularity_result(base_weights, target_mom_series, asset_name):
-            # Tarihsel tüm bar skorlarını hesapla (Dağılımı ve Eşiği bulmak için)
+        def build_fed_master_result(base_weights, target_mom_series, asset_name):
             bar_scores = []
-            lookback_bars = min(len(df), 96) # Son 2-4 gün
+            lookback_bars = min(len(df), 96)
             
             for i in range(-lookback_bars, 0):
                 t_score = 0.0
@@ -198,11 +199,8 @@ class SingularityMacroEngine:
                 bar_scores.append(np.tanh(t_score / 1.4) * 100.0)
 
             scores_series = pd.Series(bar_scores)
-            
-            # ADAPTİF EŞİK: Son günlerin %65'lik Yüzdelik Dilimi (Volatiliteye göre nefes alır)
             adaptive_threshold = float(np.clip(scores_series.abs().quantile(0.65), 10.0, 22.0))
             
-            # Son Bar Hesaplaması
             multipliers = {}
             for k, w in base_weights.items():
                 val = abs(factors_series_pool[k].iloc[-1])
@@ -234,8 +232,7 @@ class SingularityMacroEngine:
             total_score = sum(factors_series_pool[k].iloc[-1] * (dyn_weights[k] / 100.0) for k in dyn_weights)
             final_score = np.tanh(total_score / 1.4) * 100
 
-            # ADAPTİF EŞİĞE GÖRE KARAR VE RENK
-            micro_1h = target_mom_series.iloc[-1]
+            # ADAPTİF EŞİK KARARI
             if final_score > adaptive_threshold:
                 msg = f"🚀 GÜÇLÜ BOĞA TRENDİ (Puan: +{adaptive_threshold:.1f} Eşiğini Aştı)"
                 css = "div-bull"
@@ -243,16 +240,15 @@ class SingularityMacroEngine:
                 msg = f"🩸 GÜÇLÜ AYI BASKISI (Puan: -{adaptive_threshold:.1f} Eşiğini Aştı)"
                 css = "div-bear"
             else:
-                msg = f"⚪ DENGELİ KONSOLİDASYON (±{adaptive_threshold:.1f} Nötr Bandı İçinde)"
+                msg = f"⚪ DENGELİ KONSOLİDASYON (±{adaptive_threshold:.1f} Nötr Bandı)"
                 css = "div-neutral"
 
-            # Taktiksel Rehberlik
             if final_score > adaptive_threshold:
-                structure = "Küresel makro hidrolikler ve fiyat ivmesi tam uyumlu şekilde alıcıları destekliyor."
+                structure = "Fed faiz baskısı kalktı ve küresel makro hidrolikler alıcıları güçlü destekliyor."
                 action = "🚀 TRENDİ SÜR: 4H Alım yönlü pozisyonlar güvenle taşınabilir. Direnç kırılımlarını takip et."
                 badge_cls = "action-badge"
             elif final_score < -adaptive_threshold:
-                structure = "Küresel makro baskı ve fiyat düşüşü satıcıların kontrolünde."
+                structure = "Fed politika baskısı ve yükselen faizler değerlemeleri eziyor."
                 action = "🩸 SATIŞ BASKISI DEVAM: 4H Satış yönlü pozisyonlar korunabilir. Destek kırılımlarını izle."
                 badge_cls = "action-badge-bear"
             else:
@@ -272,46 +268,62 @@ class SingularityMacroEngine:
             }
 
         # ----------------------------------------------------
-        # 4 VARLIK MATRİSLERİ
+        # 4 VARLIK İÇİN 2Y FED ENTEGRELİ MATRİSLER
         # ----------------------------------------------------
+        # 1. S&P 500
         spx_base = {
-            'SPX_Mom': 40.0, 'Credit_Risk_Spread': 20.0, 'Bond_Yield_Pressure': -15.0,
-            'DXY_Pressure': -10.0, 'Sector_Rotation': 5.0, 'Copper_Gold': 5.0,
-            'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0, 'Real_Yield_Shock': -5.0
+            'SPX_Mom': 35.0,
+            'Fed_Pivot_Pressure': -20.0,   # 2Y Fed Faiz İndirimi Beklentisi (Düşüşü = Boğa Rallisi)
+            'Bond_Yield_Pressure': -15.0,  # 10Y Uzun Vade Faiz Baskısı
+            'Credit_Risk_Spread': 15.0,    # Kurumsal Kredi Sağlığı
+            'DXY_Pressure': -10.0,         # Dolar Baskısı
+            'Sector_Rotation': 5.0         # Sektör Rotasyonu
         }
-        scores['SPX'] = build_singularity_result(spx_base, spx_mom, "S&P 500")
+        scores['SPX'] = build_fed_master_result(spx_base, spx_mom, "S&P 500")
 
+        # 2. NASDAQ (Fed Faiz İndiriminin 1 Numaralı Kazananı)
         nq_base = {
-            'NQ_Mom': 40.0, 'Bond_Yield_Pressure': -20.0, 'Credit_Risk_Spread': 15.0,
-            'DXY_Pressure': -10.0, 'Sector_Rotation': 5.0, 'Copper_Gold': 5.0,
-            'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0, 'Real_Yield_Shock': -5.0
+            'NQ_Mom': 35.0,
+            'Fed_Pivot_Pressure': -25.0,   # 2Y Faiz İndirimi Teknoloji İçin #1 Yakıttır
+            'Bond_Yield_Pressure': -15.0,  # 10Y Faiz Baskısı
+            'Credit_Risk_Spread': 10.0,    # Kredi Sağlığı
+            'Sector_Rotation': 10.0,       # Teknoloji Liderliği
+            'DXY_Pressure': -5.0           # Dolar Baskısı
         }
-        scores['NQ'] = build_singularity_result(nq_base, nq_mom, "NASDAQ")
+        scores['NQ'] = build_fed_master_result(nq_base, nq_mom, "NASDAQ")
 
+        # 3. ALTIN (Fed Faiz İndirimi = Parasal Altın Boğası)
         xau_base = {
-            'XAU_Mom': 40.0, 'Real_Yield_Shock': 25.0, 'DXY_Pressure': -20.0,
-            'Bond_Yield_Pressure': -15.0, 'Gold_Oil': 10.0, 'SLV_GLD_Beta': 5.0,
-            'Copper_Gold': -3.0, 'Carry_Trade': 3.0, 'BTC_Liquidity': -2.0
+            'XAU_Mom': 35.0,
+            'Fed_Pivot_Pressure': -20.0,   # 2Y Faiz Düşüşü = Altın Boğası
+            'Real_Yield_Shock': 20.0,      # TIPS Reel Faiz Koruması
+            'DXY_Pressure': -15.0,         # Dolar Baskısı
+            'Gold_Oil': 5.0,               # Stagflasyon Koruması
+            'SLV_GLD_Beta': 5.0            # Değerli Maden İştahı
         }
-        scores['XAU'] = build_singularity_result(xau_base, xau_mom, "ALTIN")
+        scores['XAU'] = build_fed_master_result(xau_base, xau_mom, "ALTIN")
 
+        # 4. GÜMÜŞ (Sanayi + Fed İndirim Kaldıracı)
         xag_base = {
-            'XAG_Mom': 40.0, 'Real_Yield_Shock': 20.0, 'DXY_Pressure': -15.0,
-            'Bond_Yield_Pressure': -10.0, 'Copper_Gold': 10.0, 'XME_GLD_Ratio': 10.0,
-            'SLV_GLD_Beta': 5.0, 'Gold_Oil': 5.0, 'BTC_Liquidity': 5.0
+            'XAG_Mom': 35.0,
+            'Copper_Gold': 20.0,           # Sanayi Talebi
+            'Fed_Pivot_Pressure': -15.0,   # Fed Faiz İndirimi Desteği
+            'XME_GLD_Ratio': 15.0,         # Madencilik Aktivitesi
+            'DXY_Pressure': -10.0,         # Dolar Baskısı
+            'Real_Yield_Shock': 5.0        # Reel Faiz
         }
-        scores['XAG'] = build_singularity_result(xag_base, xag_mom, "GÜMÜŞ")
+        scores['XAG'] = build_fed_master_result(xag_base, xag_mom, "GÜMÜŞ")
 
         return scores, regime_info
 
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = SingularityMacroEngine()
+engine = FedPivotMacroEngine()
 
-st.title("🏛️ TIER-1 MASTER TERMINAL (v80.0)")
-st.markdown('<span class="status-badge">⚡ FULLY AUTONOMOUS QUANTILE-ADAPTIVE ENGINE</span>', unsafe_allow_html=True)
-st.caption("Kendi Kendini Kalibre Eden Dinamik Yüzdelik Dilim Eşikleri (Threshold Decay Korumalı)")
+st.title("🏛️ TIER-1 MASTER TERMINAL (v90.0)")
+st.markdown('<span class="status-badge">⚡ FED PIVOT & 2Y TREASURY QUANT ENGINE</span>', unsafe_allow_html=True)
+st.caption("2Y CME Hazine Vadeli (ZT=F) + Fed Faiz İndirim Olasılığı & All-Weather Rejim Dedektörü")
 
 try:
     df_grid = engine.fetch_synchronized_grid()
@@ -321,7 +333,7 @@ try:
     else:
         results, regime_info = engine.compute_all_asset_scores(df_grid)
 
-        # GÜNLÜK HAKİKİ REJİM BANDI
+        # HAKİKİ MAKRO REJİM BANDI
         st.markdown(f"""
         <div class="regime-box {regime_info['css']}">
             Mevcut Küresel Makro Rejim: {regime_info['name']}<br>
@@ -344,7 +356,6 @@ try:
                 st.markdown(f"### {asset_title} 4H Rotası")
                 st.markdown(f'<span class="threshold-badge">🎯 Canlı Adaptif Eşik: ±{th:.1f}</span>', unsafe_allow_html=True)
                 
-                # Dinamik Adaptif Eşiğe Göre Renk!
                 if score > th:
                     c = "#00E676"  # Yeşil (Boğa)
                 elif score < -th:
@@ -355,7 +366,7 @@ try:
                 st.markdown(f"<h1 style='color: {c}; font-size: 55px; margin:0;'>{score:.1f}</h1>", unsafe_allow_html=True)
                 st.markdown(f'<div class="{div_class}">{div_msg}</div>', unsafe_allow_html=True)
                 
-                # Taktiksel Kart
+                # Taktiksel Yorum Kartı
                 st.markdown(f"""
                 <div class="commentary-card">
                     <div class="commentary-header">📊 Portföy Masası Teşhisi:</div>
