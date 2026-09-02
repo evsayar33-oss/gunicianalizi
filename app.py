@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v90.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v95.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -36,10 +36,10 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # 1 dakikada bir otomatik yenile
-count = st_autorefresh(interval=60000, limit=None, key="macro_900_refresh")
+count = st_autorefresh(interval=60000, limit=None, key="macro_950_refresh")
 
 # ==========================================
-# 2. FED POLİTİKA VE QUANT MAKRO MOTORU (v90.0)
+# 2. FED POLİTİKA VE QUANT MAKRO MOTORU (v95.0)
 # ==========================================
 class FedPivotMacroEngine:
     def __init__(self):
@@ -53,7 +53,7 @@ class FedPivotMacroEngine:
             'EURUSD=X': 'EUR',      # Dolar Gücü (Ters DXY)
             'USDJPY=X': 'JPY',      # Carry Trade
             'BTC-USD': 'BTC',       # 24/7 Global Likidite
-            'ZT=F': 'BONDS_2Y',     # YENİ: 2Y Hazine Vadeli (Fed Faiz İndirim Radarı)
+            'ZT=F': 'BONDS_2Y',     # 2Y Hazine Vadeli (Fed Faiz İndirim Radarı)
             'ZN=F': 'BONDS_10Y',    # 10Y Hazine Vadeli
             'ZB=F': 'BONDS_30Y',    # 30Y Uzun Vade Vadeli
             'HYG': 'HYG',           # Junk Kredi
@@ -139,11 +139,11 @@ class FedPivotMacroEngine:
         jpy_macro = self.calculate_daily_momentum_series(df['JPY'])
         dxy_macro = -self.calculate_daily_momentum_series(df['EUR'])
         
-        # 2Y (FED POLİTİKASI) VE 10Y (UZUN VADE) FAİZ BASKISI
-        fed_pivot_pressure = -self.calculate_daily_momentum_series(df['BONDS_2Y'])   # 2Y Getiri Baskısı (Düşüşü = Fed İndirimi)
-        yield_macro = -self.calculate_daily_momentum_series(df['BONDS_10Y'])         # 10Y Getiri Baskısı
+        fed_pivot_pressure = -self.calculate_daily_momentum_series(df['BONDS_2Y'])   # 2Y Faiz Düşüşü = Fed İndirimi
+        yield_macro = -self.calculate_daily_momentum_series(df['BONDS_10Y'])         # 10Y Faiz Baskısı
         
         credit_risk = self.calculate_ratio_momentum_series(df['HYG'], df['LQD'])
+        credit_flight = self.calculate_ratio_momentum_series(df['HYG'], df['BONDS_30Y'])
         real_yield_shock = self.calculate_ratio_momentum_series(df['BONDS_10Y'], df['BONDS_30Y'])
         copper_gold = self.calculate_ratio_momentum_series(df['COPPER'], df['XAU'])
         gold_oil = self.calculate_ratio_momentum_series(df['XAU'], df['OIL'])
@@ -155,16 +155,14 @@ class FedPivotMacroEngine:
             'SPX_Mom': spx_mom, 'NQ_Mom': nq_mom, 'XAU_Mom': xau_mom, 'XAG_Mom': xag_mom,
             'Fed_Pivot_Pressure': fed_pivot_pressure, 'Bond_Yield_Pressure': yield_macro,
             'DXY_Pressure': dxy_macro, 'Real_Yield_Shock': real_yield_shock,
-            'Credit_Risk_Spread': credit_risk, 'Sector_Rotation': sector_rot,
-            'Copper_Gold': copper_gold, 'Gold_Oil': gold_oil, 'SLV_GLD_Beta': slv_gld,
+            'Credit_Risk_Spread': credit_risk, 'Credit_Flight_Safety': credit_flight,
+            'Sector_Rotation': sector_rot, 'Copper_Gold': copper_gold,
+            'Gold_Oil': gold_oil, 'SLV_GLD_Beta': slv_gld,
             'XME_GLD_Ratio': xme_gld, 'BTC_Liquidity': btc_macro, 'Carry_Trade': jpy_macro
         }
 
-        # ==========================================================
-        # 2. FED POLİTİKA GÜDÜMLÜ ADAPTİF MAKRO REJİM MOTORU
-        # ==========================================================
+        # REJİM MOTORU
         growth_raw = (0.4 * credit_risk) + (0.3 * copper_gold) + (0.3 * equity_common)
-        # Sıkılık artık doğrudan 2Y Fed İndirim Beklentisini ve 10Y Faizleri içerir
         tightness_raw = (0.4 * fed_pivot_pressure) + (0.3 * yield_macro) + (0.3 * dxy_macro)
 
         g_vol = growth_raw.tail(64).std() if len(growth_raw) >= 64 else 0.5
@@ -184,9 +182,7 @@ class FedPivotMacroEngine:
         else:
             regime_info = {'name': "⚪ DENGELİ GEÇİŞ REJİMİ (Konsolidasyon)", 'css': "regime-neutral", 'desc': "Piyasa Fed beklentileri öncesinde dengeli konsolide oluyor."}
 
-        # ==========================================================
-        # 3. DİNAMİK YÜZDELİK DİLİM (QUANTILE) HESAPLAMA MOTORU
-        # ==========================================================
+        # QUANTILE ADAPTİF MOTORU
         def build_fed_master_result(base_weights, target_mom_series, asset_name):
             bar_scores = []
             lookback_bars = min(len(df), 96)
@@ -232,7 +228,6 @@ class FedPivotMacroEngine:
             total_score = sum(factors_series_pool[k].iloc[-1] * (dyn_weights[k] / 100.0) for k in dyn_weights)
             final_score = np.tanh(total_score / 1.4) * 100
 
-            # ADAPTİF EŞİK KARARI
             if final_score > adaptive_threshold:
                 msg = f"🚀 GÜÇLÜ BOĞA TRENDİ (Puan: +{adaptive_threshold:.1f} Eşiğini Aştı)"
                 css = "div-bull"
@@ -267,52 +262,69 @@ class FedPivotMacroEngine:
                 'commentary': commentary
             }
 
-        # ----------------------------------------------------
-        # 4 VARLIK İÇİN 2Y FED ENTEGRELİ MATRİSLER
-        # ----------------------------------------------------
-        # 1. S&P 500
-        spx_base = {
-            'SPX_Mom': 35.0,
-            'Fed_Pivot_Pressure': -20.0,   # 2Y Fed Faiz İndirimi Beklentisi (Düşüşü = Boğa Rallisi)
-            'Bond_Yield_Pressure': -15.0,  # 10Y Uzun Vade Faiz Baskısı
-            'Credit_Risk_Spread': 15.0,    # Kurumsal Kredi Sağlığı
-            'DXY_Pressure': -10.0,         # Dolar Baskısı
-            'Sector_Rotation': 5.0         # Sektör Rotasyonu
+        # ====================================================
+        # HER VARLIK İÇİN TAM 10 KATMANLI EKSİKSİZ MATRİSLER
+        # ====================================================
+        
+        # 1. GÜMÜŞ (SI=F - Tam 10 Katman)
+        xag_base = {
+            'XAG_Mom': 30.0,               # Kendi 4H Fiyat Gücü
+            'Copper_Gold': 15.0,           # Sanayi Talebi (#1 Gümüş Motoru)
+            'Fed_Pivot_Pressure': -15.0,   # 2Y Fed Faiz İndirimi Desteği
+            'XME_GLD_Ratio': 10.0,         # Madencilik & Malzeme Aktivitesi
+            'SLV_GLD_Beta': 10.0,          # Gümüşün Altın'a Göre Gücü
+            'DXY_Pressure': -10.0,         # Dolar Baskısı (-)
+            'Real_Yield_Shock': 5.0,       # Reel Faiz Desteği (+)
+            'Bond_Yield_Pressure': -5.0,   # 10Y Faiz Maliyeti (-)
+            'BTC_Liquidity': 5.0,          # 24/7 Global Risk İştahı (+)
+            'Gold_Oil': 5.0                # Hammadde Enflasyon Koruması (+)
         }
-        scores['SPX'] = build_fed_master_result(spx_base, spx_mom, "S&P 500")
+        scores['XAG'] = build_fed_master_result(xag_base, xag_mom, "GÜMÜŞ")
 
-        # 2. NASDAQ (Fed Faiz İndiriminin 1 Numaralı Kazananı)
-        nq_base = {
-            'NQ_Mom': 35.0,
-            'Fed_Pivot_Pressure': -25.0,   # 2Y Faiz İndirimi Teknoloji İçin #1 Yakıttır
-            'Bond_Yield_Pressure': -15.0,  # 10Y Faiz Baskısı
-            'Credit_Risk_Spread': 10.0,    # Kredi Sağlığı
-            'Sector_Rotation': 10.0,       # Teknoloji Liderliği
-            'DXY_Pressure': -5.0           # Dolar Baskısı
-        }
-        scores['NQ'] = build_fed_master_result(nq_base, nq_mom, "NASDAQ")
-
-        # 3. ALTIN (Fed Faiz İndirimi = Parasal Altın Boğası)
+        # 2. ALTIN (GC=F - Tam 10 Katman)
         xau_base = {
-            'XAU_Mom': 35.0,
-            'Fed_Pivot_Pressure': -20.0,   # 2Y Faiz Düşüşü = Altın Boğası
-            'Real_Yield_Shock': 20.0,      # TIPS Reel Faiz Koruması
-            'DXY_Pressure': -15.0,         # Dolar Baskısı
-            'Gold_Oil': 5.0,               # Stagflasyon Koruması
-            'SLV_GLD_Beta': 5.0            # Değerli Maden İştahı
+            'XAU_Mom': 30.0,               # Kendi 4H Fiyat Gücü
+            'Real_Yield_Shock': 20.0,      # TIPS Reel Faiz Koruması (+)
+            'Fed_Pivot_Pressure': -15.0,   # 2Y Fed Faiz İndirimi Desteği (-)
+            'DXY_Pressure': -15.0,         # Dolar Değerleme Tabanı (-)
+            'Bond_Yield_Pressure': -10.0,  # 10Y Uzun Vade Faiz Maliyeti (-)
+            'Gold_Oil': 10.0,              # Stagflasyon & Enerji Riski (+)
+            'SLV_GLD_Beta': 5.0,           # Kıymetli Maden İştahı (+)
+            'Carry_Trade': 5.0,            # FX Güvenli Liman Uyumu (+)
+            'Copper_Gold': -3.0,           # Sanayi vs Korunma Ayrışması (-)
+            'BTC_Liquidity': -2.0          # Alternatif Varlık Rekabeti (-)
         }
         scores['XAU'] = build_fed_master_result(xau_base, xau_mom, "ALTIN")
 
-        # 4. GÜMÜŞ (Sanayi + Fed İndirim Kaldıracı)
-        xag_base = {
-            'XAG_Mom': 35.0,
-            'Copper_Gold': 20.0,           # Sanayi Talebi
-            'Fed_Pivot_Pressure': -15.0,   # Fed Faiz İndirimi Desteği
-            'XME_GLD_Ratio': 15.0,         # Madencilik Aktivitesi
-            'DXY_Pressure': -10.0,         # Dolar Baskısı
-            'Real_Yield_Shock': 5.0        # Reel Faiz
+        # 3. S&P 500 (ES=F - Tam 10 Katman)
+        spx_base = {
+            'SPX_Mom': 30.0,               # Kendi 4H Fiyat Gücü
+            'Fed_Pivot_Pressure': -15.0,   # 2Y Fed İndirim Rüzgarı (-)
+            'Credit_Risk_Spread': 15.0,    # Şirket Temerrüt Sağlığı (+)
+            'Credit_Flight_Safety': 10.0,  # Tahvilden Hisseye Kaçış (+)
+            'Bond_Yield_Pressure': -10.0,  # 10Y Faiz İskontosu (-)
+            'DXY_Pressure': -10.0,         # Dolar Baskısı (-)
+            'Sector_Rotation': 10.0,       # Sektör Liderliği (+)
+            'Carry_Trade': 5.0,            # Dolar/Yen Fonlama Akışı (+)
+            'BTC_Liquidity': 5.0,          # 24/7 Global Likidite (+)
+            'Copper_Gold': 5.0             # Büyüme İvmesi (+)
         }
-        scores['XAG'] = build_fed_master_result(xag_base, xag_mom, "GÜMÜŞ")
+        scores['SPX'] = build_fed_master_result(spx_base, spx_mom, "S&P 500")
+
+        # 4. NASDAQ (NQ=F - Tam 10 Katman)
+        nq_base = {
+            'NQ_Mom': 30.0,                # Kendi 4H Fiyat Gücü
+            'Fed_Pivot_Pressure': -20.0,   # 2Y Fed İndirimi Teknolojiye #1 Yakıt (-)
+            'Sector_Rotation': 15.0,       # Teknoloji Sektör Liderliği (+)
+            'Bond_Yield_Pressure': -15.0,  # 10Y Faiz İskontosu (-)
+            'Credit_Risk_Spread': 10.0,    # Şirket Borçlanma Sağlığı (+)
+            'DXY_Pressure': -10.0,         # Çokuluslu Gelir Baskısı (-)
+            'Credit_Flight_Safety': 5.0,   # Risk İştahı (+)
+            'Carry_Trade': 5.0,            # Tech Hedge Fonlama (+)
+            'BTC_Liquidity': 5.0,          # Yüksek Beta Likidite (+)
+            'Copper_Gold': 5.0             # Büyüme Desteği (+)
+        }
+        scores['NQ'] = build_fed_master_result(nq_base, nq_mom, "NASDAQ")
 
         return scores, regime_info
 
@@ -321,9 +333,9 @@ class FedPivotMacroEngine:
 # ==========================================
 engine = FedPivotMacroEngine()
 
-st.title("🏛️ TIER-1 MASTER TERMINAL (v90.0)")
-st.markdown('<span class="status-badge">⚡ FED PIVOT & 2Y TREASURY QUANT ENGINE</span>', unsafe_allow_html=True)
-st.caption("2Y CME Hazine Vadeli (ZT=F) + Fed Faiz İndirim Olasılığı & All-Weather Rejim Dedektörü")
+st.title("🏛️ TIER-1 MASTER TERMINAL (v95.0)")
+st.markdown('<span class="status-badge">⚡ FED PIVOT & FULL 10-LAYER QUANT ENGINE</span>', unsafe_allow_html=True)
+st.caption("2Y CME Fed Radarı (ZT=F) + 10-Katmanlı Eksiksiz Çapraz Varlık Matrisi")
 
 try:
     df_grid = engine.fetch_synchronized_grid()
@@ -356,6 +368,7 @@ try:
                 st.markdown(f"### {asset_title} 4H Rotası")
                 st.markdown(f'<span class="threshold-badge">🎯 Canlı Adaptif Eşik: ±{th:.1f}</span>', unsafe_allow_html=True)
                 
+                # Dinamik Adaptif Eşiğe Göre Renk!
                 if score > th:
                     c = "#00E676"  # Yeşil (Boğa)
                 elif score < -th:
