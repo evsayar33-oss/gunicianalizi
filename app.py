@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 AUTONOMOUS BRAIN (v40.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v41.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -29,13 +29,12 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 1 dakikada bir otomatik yenile
-count = st_autorefresh(interval=60000, limit=None, key="macro_400_refresh")
+count = st_autorefresh(interval=60000, limit=None, key="macro_410_refresh")
 
 # ==========================================
-# 2. OTONOM ÖĞRENEN QUANT MAKRO BEYNİ (v40.0)
+# 2. HASSAS KALİBRE EDİLMİŞ QUANT MOTORU (v41.0)
 # ==========================================
-class AutonomousMacroBrain:
+class CalibratedMasterEngine:
     def __init__(self):
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
@@ -92,7 +91,6 @@ class AutonomousMacroBrain:
         return df
 
     def calculate_kinetic_series(self, s):
-        """Her bar için 15m (%50) + 1H (%30) + 4H (%20) kinetik ivme serisi üretir."""
         if s is None or len(s) < 32:
             return pd.Series(0.0, index=s.index if s is not None else [0])
         
@@ -113,15 +111,9 @@ class AutonomousMacroBrain:
         return self.calculate_kinetic_series(ratio)
 
     def compute_online_learning_ic(self, factor_series, target_price_series, lag=4, window=48):
-        """
-        WALK-FORWARD ML (ONLINE IC LEARNING):
-        Faktörün son 12 saatteki (48 bar) tahmin doğruluğunu ve PnL korelasyonunu ölçer.
-        Doğru bilen faktörü ödüllendirir, terse düşeni cezalandırır.
-        """
         if len(factor_series) < window + lag or len(target_price_series) < window + lag:
             return 0.0
         
-        # 4 bar (1 saat) sonraki gerçek hedef getirisi
         target_fwd_ret = target_price_series.pct_change(lag).shift(-lag).tail(window)
         f_past_signal  = factor_series.tail(window)
         
@@ -142,7 +134,7 @@ class AutonomousMacroBrain:
         credit = factors['Credit_Risk_Spread'].iloc[-1]
 
         if spx > 0.3 and nq > 0.3 and sector >= -0.5 and copper >= -0.5 and dxy <= 0.5:
-            return {'name': "☀️ GENİŞ TABANLI BOĞA RALLİSİ (Goldilocks)", 'css': "regime-goldilocks", 'desc': "Teknoloji ve sanayi katılımıyla genişleyen sağlıklı küresel ralli."}
+            return {'name': "☀️ GENİŞ TABANLI BOĞA RALLİSİ (Goldilocks)", 'css': "regime-goldilocks", 'desc': "Tüm hisse ve riskli varlıklar alıcılarla destekli."}
         elif dxy < -0.5 and (sector < -0.6 or copper < -0.6):
             return {'name': "⚠️ SEÇİCİ DOLAR GEVŞEMESİ & SAVUNMACI ROTASYON", 'css': "regime-mixed", 'desc': "Dolar düşüşü hisseleri tutuyor ancak Teknoloji ve Sanayi zayıf."}
         elif copper > 0.8 and factors['Gold_Oil'].iloc[-1] > 0 and spx > 0:
@@ -157,7 +149,6 @@ class AutonomousMacroBrain:
     def compute_all_asset_scores(self, df):
         scores = {}
         
-        # 1. TÜM KİNETİK ZAMAN SERİLERİ
         spx_mom = self.calculate_kinetic_series(df['SPX'])
         nq_mom = self.calculate_kinetic_series(df['NQ'])
         xau_mom = self.calculate_kinetic_series(df['XAU'])
@@ -186,33 +177,23 @@ class AutonomousMacroBrain:
             'DXY_Pressure': dxy_mom, 'Bond_Yield_Pressure': yield_mom, 'BTC_Liquidity': btc_mom, 'Carry_Trade': jpy_mom
         }
 
-        # REJİM KONSENSÜSÜ
         regime_info = self.detect_consensus_macro_regime(factors_series_pool)
 
         # ==========================================
-        # 2. OTONOM ÖĞRENEN HESAPLAMA MOTORU
+        # 2. TAVAN VE TABAN KORUMALI HESAPLAMA MOTORU
         # ==========================================
-        def build_autonomous_result(base_weights, target_sym, target_mom_val):
+        def build_calibrated_result(base_weights, target_sym, target_mom_val):
             target_price_series = df[target_sym]
             
             multipliers = {}
-            factor_ics = {}
-            
             for k, w_base in base_weights.items():
                 f_s = factors_series_pool[k]
                 latest_val = abs(f_s.iloc[-1])
-                
-                # 1. CANLI IC / PnL ÖĞRENME KATSAYISI
                 ic = self.compute_online_learning_ic(f_s, target_price_series)
-                factor_ics[k] = ic
-                
-                # Doğru tahmin eden faktörün ağırlığı katlanır (exp(sign * ic))
                 sign = 1.0 if w_base >= 0 else -1.0
-                learning_factor = np.exp(sign * ic * 1.0)
                 
-                # 2. ŞOK DİKKAT ÇARPAN
-                shock_boost = (1.0 + (min(latest_val, 2.5) ** 1.0))
-                
+                learning_factor = np.exp(sign * ic * 0.8) # Dengeli öğrenme
+                shock_boost = (1.0 + (min(latest_val, 2.0) ** 0.8))
                 multipliers[k] = abs(w_base) * learning_factor * shock_boost
 
             total_att = sum(multipliers.values()) + 1e-6
@@ -220,8 +201,16 @@ class AutonomousMacroBrain:
             for k, w_base in base_weights.items():
                 sign = 1.0 if w_base >= 0 else -1.0
                 raw_norm = (multipliers[k] / total_att) * 100.0
+                
+                # FİYAT İVMESİNE EN AZ %35 TABAN, DIŞ RASYOLARA EN FAZLA %15 TAVAN!
+                if '_Mom' in k:
+                    raw_norm = max(raw_norm, 35.0)
+                else:
+                    raw_norm = min(raw_norm, 15.0)
+                    
                 dyn_weights[k] = raw_norm * sign
 
+            # %100 Normalizasyon
             total_actual = sum(abs(v) for v in dyn_weights.values()) + 1e-6
             for k in dyn_weights:
                 dyn_weights[k] = (dyn_weights[k] / total_actual) * 100.0
@@ -239,11 +228,10 @@ class AutonomousMacroBrain:
 
             breakdown_df = pd.DataFrame(breakdown).sort_values('Öğrenilmiş Ağırlık (%)', ascending=False)
             total_score = sum(factors_series_pool[k].iloc[-1] * (dyn_weights[k] / 100.0) for k in dyn_weights)
-            
-            final_score = np.tanh(total_score / 1.3) * 100
+            final_score = np.tanh(total_score / 1.1) * 100
 
             if final_score > 15:
-                msg = "🚀 GÜÇLÜ BOĞA TRENDİ (Alıcılar ve Öğrenilmiş Makro Güç Hakim)"
+                msg = "🚀 GÜÇLÜ BOĞA TRENDİ (Alıcılar ve Likidite Piyasayı Sürüklüyor)"
                 css = "div-bull"
             elif final_score < -15:
                 msg = "🩸 GÜÇLÜ AYI BASKISI (Satıcılar ve Makro Fren Üstün)"
@@ -254,51 +242,48 @@ class AutonomousMacroBrain:
 
             return {'score': final_score, 'table': breakdown_df, 'msg': msg, 'css': css}
 
-        # ----------------------------------------------------
-        # 10 KATMANLI EKSİKSİZ KURUMSAL MATRİSLER
-        # ----------------------------------------------------
         # 1. GÜMÜŞ (XAG)
         xag_base = {
-            'XAG_Mom': 30.0, 'Copper_Gold': 20.0, 'XME_GLD_Ratio': 20.0,
+            'XAG_Mom': 35.0, 'XME_GLD_Ratio': 20.0, 'Copper_Gold': 15.0,
             'SLV_GLD_Beta': 10.0, 'Real_Yield_Shock': 10.0, 'DXY_Pressure': -10.0,
             'BTC_Liquidity': 5.0, 'Gold_Oil': 5.0, 'Credit_Risk_Spread': 5.0, 'Bond_Yield_Pressure': -5.0
         }
-        scores['XAG'] = build_autonomous_result(xag_base, 'XAG', xag_mom.iloc[-1])
+        scores['XAG'] = build_calibrated_result(xag_base, 'XAG', xag_mom.iloc[-1])
 
         # 2. ALTIN (XAU)
         xau_base = {
-            'XAU_Mom': 30.0, 'Real_Yield_Shock': 25.0, 'DXY_Pressure': -20.0,
+            'XAU_Mom': 35.0, 'Real_Yield_Shock': 25.0, 'DXY_Pressure': -20.0,
             'Bond_Yield_Pressure': -15.0, 'Gold_Oil': 15.0, 'SLV_GLD_Beta': 10.0,
             'Credit_Flight_Safety': -5.0, 'Carry_Trade': 5.0, 'Copper_Gold': -3.0, 'BTC_Liquidity': -2.0
         }
-        scores['XAU'] = build_autonomous_result(xau_base, 'XAU', xau_mom.iloc[-1])
+        scores['XAU'] = build_calibrated_result(xau_base, 'XAU', xau_mom.iloc[-1])
 
         # 3. S&P 500 (SPX)
         spx_base = {
-            'SPX_Mom': 30.0, 'Credit_Flight_Safety': 15.0, 'Credit_Risk_Spread': 15.0,
+            'SPX_Mom': 35.0, 'Credit_Flight_Safety': 15.0, 'Credit_Risk_Spread': 15.0,
             'Sector_Rotation': 10.0, 'Carry_Trade': 10.0, 'BTC_Liquidity': 5.0,
             'Copper_Gold': 5.0, 'DXY_Pressure': -5.0, 'Real_Yield_Shock': -5.0, 'Bond_Yield_Pressure': -5.0
         }
-        scores['SPX'] = build_autonomous_result(spx_base, 'SPX', spx_mom.iloc[-1])
+        scores['SPX'] = build_calibrated_result(spx_base, 'SPX', spx_mom.iloc[-1])
 
         # 4. NASDAQ (NQ)
         nq_base = {
-            'NQ_Mom': 30.0, 'Sector_Rotation': 20.0, 'Credit_Flight_Safety': 10.0,
+            'NQ_Mom': 35.0, 'Sector_Rotation': 20.0, 'Credit_Flight_Safety': 10.0,
             'Credit_Risk_Spread': 10.0, 'Carry_Trade': 10.0, 'BTC_Liquidity': 5.0,
             'Copper_Gold': 5.0, 'DXY_Pressure': -5.0, 'Real_Yield_Shock': -5.0, 'Bond_Yield_Pressure': -5.0
         }
-        scores['NQ'] = build_autonomous_result(nq_base, 'NQ', nq_mom.iloc[-1])
+        scores['NQ'] = build_calibrated_result(nq_base, 'NQ', nq_mom.iloc[-1])
 
         return scores, regime_info
 
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = AutonomousMacroBrain()
+engine = CalibratedMasterEngine()
 
-st.title("🏛️ TIER-1 AUTONOMOUS BRAIN (v40.0)")
-st.markdown('<span class="status-badge">🧠 WALK-FORWARD ML & ONLINE PnL ADAPTATION ACTIVE</span>', unsafe_allow_html=True)
-st.caption("10-Katmanlı Canlı Matris + Tahmin Doğruluğuna Göre Kendi Kendine Öğrenen Ağırlık Motoru")
+st.title("🏛️ TIER-1 MASTER TERMINAL (v41.0)")
+st.markdown('<span class="status-badge">⚡ CAP-PROTECTED ONLINE LEARNING ENGINE</span>', unsafe_allow_html=True)
+st.caption("Fiyat Taban Güvencesi (%35) + Dış Rasyo Tavan Koruması (%15) | Kusursuz Simetri")
 
 try:
     df_grid = engine.fetch_synchronized_grid()
@@ -308,7 +293,6 @@ try:
     else:
         results, regime_info = engine.compute_all_asset_scores(df_grid)
 
-        # ÜST REJİM BANDI
         st.markdown(f"""
         <div class="regime-box {regime_info['css']}">
             Mevcut Küresel Makro Rejim: {regime_info['name']}<br>
@@ -328,7 +312,6 @@ try:
             with col1:
                 st.markdown(f"### {asset_title} 4H Rotası")
                 
-                # Nötr bölge [-15, +15] BEYAZ!
                 if score > 15:
                     c = "#00E676"  # Yeşil (Boğa)
                 elif score < -15:
