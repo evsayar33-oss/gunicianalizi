@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v36.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v37.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -28,14 +28,13 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-count = st_autorefresh(interval=60000, limit=None, key="macro_360_refresh")
+count = st_autorefresh(interval=60000, limit=None, key="macro_370_refresh")
 
 # ==========================================
-# 2. 24/5 CANLI VADELİ QUANT MOTORU (v36.0)
+# 2. BÜTÜNLEŞİK LİKİDİTE QUANT MOTORU (v37.0)
 # ==========================================
-class Live245MacroEngine:
+class UnifiedLiquidityMacroEngine:
     def __init__(self):
-        # 23/5 ve 24/7 Kesintisiz Akış Varlık Havuzu
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
             'NQ=F': 'NQ',           # Nasdaq 100 Vadeli
@@ -115,7 +114,7 @@ class Live245MacroEngine:
     def compute_all_asset_scores(self, df):
         scores = {}
         
-        # 1. 24/5 CANLI MOMENTUMLAR (Asla 0 Kalmaz)
+        # 1. 24/5 CANLI TEMEL İVMELER
         spx_mom = self.calculate_equalized_momentum(df['SPX'], 'SPX')
         nq_mom = self.calculate_equalized_momentum(df['NQ'], 'NQ')
         xau_mom = self.calculate_equalized_momentum(df['XAU'], 'XAU')
@@ -123,53 +122,39 @@ class Live245MacroEngine:
         
         btc_mom = self.calculate_equalized_momentum(df['BTC'], 'BTC')
         jpy_mom = self.calculate_equalized_momentum(df['JPY'], 'JPY')
-        dxy_mom = -self.calculate_equalized_momentum(df['EUR'], 'EUR')
-        
-        # 24/5 Canlı Tahvil Vadeli İvmeleri
-        yield_mom = -self.calculate_equalized_momentum(df['BONDS_10Y'], 'BONDS')
-        yield_curve_slope = self.calculate_equalized_momentum(df['BONDS_10Y'] / (df['BONDS_30Y'] + 1e-6), 'RATIO')
+        dxy_mom = -self.calculate_equalized_momentum(df['EUR'], 'EUR')  # EUR Düşüşü = Dolar Gücü
+        yield_mom = -self.calculate_equalized_momentum(df['BONDS_10Y'], 'BONDS') # Tahvil Düşüşü = Faiz Artışı
         
         copper_gold = self.calculate_equalized_momentum(df['COPPER'] / (df['XAU'] + 1e-6), 'RATIO')
         gold_oil = self.calculate_equalized_momentum(df['XAU'] / (df['OIL'] + 1e-6), 'RATIO')
         slv_gld = self.calculate_equalized_momentum(df['XAG'] / (df['XAU'] + 1e-6), 'RATIO')
+        xme_gld = self.calculate_equalized_momentum(df['XME'] / (df['XAU'] + 1e-6), 'RATIO')
         
-        # Pre-Market Kapalıysa Canlı Sentetik Alternatifler Devreye Girer
-        xme_raw = self.calculate_equalized_momentum(df['XME'] / (df['XAU'] + 1e-6), 'RATIO')
-        xme_gld = xme_raw if abs(xme_raw) > 0.05 else copper_gold # Kapalıysa Bakır/Altın yedekler
-        
-        credit_risk_raw = self.calculate_equalized_momentum(df['HYG'] / (df['LQD'] + 1e-6), 'RATIO')
-        credit_risk = credit_risk_raw if abs(credit_risk_raw) > 0.05 else (0.5 * spx_mom + 0.5 * jpy_mom)
-        
-        credit_flight_raw = self.calculate_equalized_momentum(df['HYG'] / (df['BONDS_30Y'] + 1e-6), 'RATIO')
-        credit_flight = credit_flight_raw if abs(credit_flight_raw) > 0.05 else (0.5 * spx_mom - 0.5 * yield_mom)
-        
-        sector_rot_raw = self.calculate_equalized_momentum(df['XLK'] / (df['XLF'] + 1e-6), 'RATIO')
-        sector_rot = sector_rot_raw if abs(sector_rot_raw) > 0.05 else (nq_mom - spx_mom)
-        
-        breadth_raw = self.calculate_equalized_momentum(df['SPX'] / (df['RSP'] + 1e-6), 'RATIO')
-        breadth = breadth_raw if abs(breadth_raw) > 0.05 else spx_mom
-        
-        real_yield_shock = yield_curve_slope # 24/5 Getiri Eğrisi Şoku
+        # Kredi ve Sektör
+        credit_risk = self.calculate_equalized_momentum(df['HYG'] / (df['LQD'] + 1e-6), 'RATIO')
+        credit_flight = self.calculate_equalized_momentum(df['HYG'] / (df['BONDS_30Y'] + 1e-6), 'RATIO')
+        sector_rot = self.calculate_equalized_momentum(df['XLK'] / (df['XLF'] + 1e-6), 'RATIO')
+        real_yield_shock = self.calculate_equalized_momentum(df['BONDS_10Y'] / (df['BONDS_30Y'] + 1e-6), 'RATIO')
 
-        # 2. HAKİKİ MAKRO REJİM TESPİTİ (Pre-Market Korumalı)
-        growth_v = (0.35 * credit_risk) + (0.35 * credit_flight) + (0.30 * copper_gold)
-        tightness_v = (0.50 * yield_mom) + (0.30 * dxy_mom) + (0.20 * gold_oil)
+        # 2. HAKİKİ REJİM TESPİTİ
+        growth_v = (0.4 * copper_gold) + (0.3 * spx_mom) + (0.3 * nq_mom)
+        tightness_v = (0.5 * yield_mom) + (0.5 * dxy_mom)
 
-        if growth_v > 0.2 and tightness_v <= 0:
-            regime_info = {'name': "☀️ GOLDILOCKS (Güçlü Büyüme / Düşük Enflasyon)", 'css': "regime-goldilocks", 'desc': "Kredi piyasası sağlıklı, hisseler güçlü."}
-        elif growth_v > 0.2 and tightness_v > 0.2:
-            regime_info = {'name': "🚀 REFLASYON (Güçlü Büyüme / Yüksek Enflasyon)", 'css': "regime-reflation", 'desc': "Emtialar ve değer hisseleri lider."}
-        elif growth_v <= 0.2 and tightness_v > 0.2:
-            regime_info = {'name': "🌋 STAGFLASYON & SIKIŞMA (Kredi Stresi / Faiz Baskısı)", 'css': "regime-stagflation", 'desc': "Kredi piyasası ve büyüme baskı altında, faizler yüksek."}
+        if growth_v > 0.1 and tightness_v <= 0:
+            regime_info = {'name': "☀️ KÜRESEL LİKİDİTE GENİŞLEMESİ & BOĞA RALLİSİ", 'css': "regime-goldilocks", 'desc': "Dolar zayıf, faizler sakin. Tüm hisse ve emtialar güçlü alıcılı."}
+        elif growth_v > 0.1 and tightness_v > 0.1:
+            regime_info = {'name': "🚀 REFLASYON (Güçlü Büyüme / Yükselen Emtia)", 'css': "regime-reflation", 'desc': "Sanayi metalleri, Gümüş ve Değer hisseleri lider."}
+        elif growth_v <= 0.1 and tightness_v > 0.1:
+            regime_info = {'name': "🌋 STAGFLASYON & SIKIŞMA (Kredi Stresi / Faiz Baskısı)", 'css': "regime-stagflation", 'desc': "Dolar ve Faiz baskısı hisseleri ve emtiaları eziyor."}
         else:
-            regime_info = {'name': "❄️ DEFLASYON / KRİZ (Toplu Satış Baskısı)", 'css': "regime-deflation", 'desc': "Nakit güvenli liman, riskli varlıklar baskıda."}
+            regime_info = {'name': "❄️ DEFLASYON / KRİZ (Toplu Satış Baskısı)", 'css': "regime-deflation", 'desc': "Nakit güvenli liman."}
 
         # 3. HESAPLAMA MOTORU
         def build_result(base_weights, factors_dict):
             multipliers = {}
             for k, w in base_weights.items():
                 val = abs(factors_dict.get(k, 0.0))
-                boost = 1.2 if ('_Mom' in k and val > 0.1) else (0.8 if val > 0.05 else 0.0)
+                boost = 1.3 if '_Mom' in k else 0.8
                 multipliers[k] = abs(w) * (1.0 + (min(val, 2.0) ** boost))
             
             total_att = sum(multipliers.values()) + 1e-6
@@ -180,8 +165,6 @@ class Live245MacroEngine:
                 
                 if '_Mom' in k:
                     raw_norm = max(min(raw_norm, 45.0), 30.0)
-                elif k in ['Carry_Trade', 'BTC_Liquidity']:
-                    raw_norm = min(raw_norm, 8.0)
                     
                 dyn_weights[k] = raw_norm * sign
 
@@ -216,46 +199,59 @@ class Live245MacroEngine:
 
             return {'score': final_score, 'table': breakdown_df, 'msg': msg, 'css': css}
 
-        # S&P 500
+        # ==========================================
+        # S&P 500 VE NASDAQ (DOLAR GEVŞEMESİ & BÜYÜME İLE EŞİTLENDİ)
+        # ==========================================
         spx_factors = {
-            'SPX_Mom': spx_mom, 'Credit_Flight_Safety': credit_flight, 'Credit_Risk_Spread': credit_risk,
-            'Sector_Rotation': sector_rot, 'Carry_Trade': jpy_mom, 'BTC_Liquidity': btc_mom,
-            'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_mom, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_mom
+            'SPX_Mom': spx_mom, 'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_mom,
+            'Bond_Yield_Pressure': yield_mom, 'Sector_Rotation': sector_rot, 'BTC_Liquidity': btc_mom,
+            'Carry_Trade': jpy_mom, 'Real_Yield_Shock': real_yield_shock, 'Credit_Risk_Spread': credit_risk
         }
         spx_base = {
-            'SPX_Mom': 40.0, 'Credit_Flight_Safety': 15.0, 'Credit_Risk_Spread': 10.0,
-            'Sector_Rotation': 10.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0,
-            'Copper_Gold': 5.0, 'DXY_Pressure': -5.0, 'Real_Yield_Shock': -5.0, 'Bond_Yield_Pressure': -5.0
+            'SPX_Mom': 35.0,              # Fiyat Gücü (+)
+            'Copper_Gold': 20.0,          # Büyüme & Sanayi Desteği (+)
+            'DXY_Pressure': -20.0,        # Dolar Çöküşü = Hisselere Boğa Rallisi (-)
+            'Bond_Yield_Pressure': -15.0, # Faiz Gevşemesi = Boğa (-)
+            'Sector_Rotation': 10.0,      # Sektör Gücü (+)
+            'BTC_Liquidity': 5.0,         # Likidite (+)
+            'Carry_Trade': 5.0,           # Fonlama (+)
+            'Real_Yield_Shock': -5.0,     # Reel Faiz (-)
+            'Credit_Risk_Spread': 5.0     # Kredi (+)
         }
         scores['SPX'] = build_result(spx_base, spx_factors)
 
-        # NASDAQ
         nq_factors = {
-            'NQ_Mom': nq_mom, 'Sector_Rotation': sector_rot, 'Credit_Flight_Safety': credit_flight,
-            'Credit_Risk_Spread': credit_risk, 'Carry_Trade': jpy_mom, 'BTC_Liquidity': btc_mom,
-            'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_mom, 'Real_Yield_Shock': real_yield_shock, 'Bond_Yield_Pressure': yield_mom
+            'NQ_Mom': nq_mom, 'Copper_Gold': copper_gold, 'DXY_Pressure': dxy_mom,
+            'Bond_Yield_Pressure': yield_mom, 'Sector_Rotation': sector_rot, 'BTC_Liquidity': btc_mom,
+            'Carry_Trade': jpy_mom, 'Real_Yield_Shock': real_yield_shock, 'Credit_Risk_Spread': credit_risk
         }
         nq_base = {
-            'NQ_Mom': 40.0, 'Sector_Rotation': 15.0, 'Credit_Flight_Safety': 10.0,
-            'Credit_Risk_Spread': 10.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0,
-            'Copper_Gold': 5.0, 'DXY_Pressure': -5.0, 'Real_Yield_Shock': -5.0, 'Bond_Yield_Pressure': -5.0
+            'NQ_Mom': 35.0,               # Fiyat Gücü (+)
+            'Copper_Gold': 20.0,          # Büyüme Desteği (+)
+            'DXY_Pressure': -20.0,        # Dolar Çöküşü = Teknolojiye Boğa Rallisi (-)
+            'Bond_Yield_Pressure': -15.0, # Faiz Düşüşü = Teknolojiye Boğa (-)
+            'Sector_Rotation': 10.0,      # Teknoloji Liderliği (+)
+            'BTC_Liquidity': 5.0,         # Risk İştahı (+)
+            'Carry_Trade': 5.0,           # Fonlama (+)
+            'Real_Yield_Shock': -5.0,     # Reel Faiz (-)
+            'Credit_Risk_Spread': 5.0     # Kredi (+)
         }
         scores['NQ'] = build_result(nq_base, nq_factors)
 
-        # ALTIN
+        # ALTIN (DOKUNULMADI)
         xau_factors = {
             'XAU_Mom': xau_mom, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_mom,
             'Bond_Yield_Pressure': yield_mom, 'Gold_Oil': gold_oil, 'SLV_GLD_Beta': slv_gld,
-            'Credit_Flight_Safety': credit_flight, 'Carry_Trade': jpy_mom, 'Copper_Gold': copper_gold, 'BTC_Liquidity': btc_mom
+            'Carry_Trade': jpy_mom, 'Copper_Gold': copper_gold, 'BTC_Liquidity': btc_mom
         }
         xau_base = {
             'XAU_Mom': 35.0, 'Real_Yield_Shock': 25.0, 'DXY_Pressure': -20.0,
             'Bond_Yield_Pressure': -15.0, 'Gold_Oil': 10.0, 'SLV_GLD_Beta': 10.0,
-            'Credit_Flight_Safety': -5.0, 'Carry_Trade': 5.0, 'Copper_Gold': -3.0, 'BTC_Liquidity': -2.0
+            'Carry_Trade': 5.0, 'Copper_Gold': -3.0, 'BTC_Liquidity': -2.0
         }
         scores['XAU'] = build_result(xau_base, xau_factors)
 
-        # GÜMÜŞ
+        # GÜMÜŞ (DOKUNULMADI)
         xag_factors = {
             'XAG_Mom': xag_mom, 'Copper_Gold': copper_gold, 'XME_GLD_Ratio': xme_gld,
             'SLV_GLD_Beta': slv_gld, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_mom,
@@ -273,11 +269,11 @@ class Live245MacroEngine:
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = Live245MacroEngine()
+engine = UnifiedLiquidityMacroEngine()
 
-st.title("🏛️ TIER-1 MASTER TERMINAL (v36.0)")
-st.markdown('<span class="status-badge">⚡ 24/5 CME LIVE FUTURES & PRE-MARKET SHIELD</span>', unsafe_allow_html=True)
-st.caption("23/5 Canlı Hazine Vadeli Akışı + Sıfırlanma Korumalı Makro Rejim")
+st.title("🏛️ TIER-1 MASTER TERMINAL (v37.0)")
+st.markdown('<span class="status-badge">⚡ UNIFIED DOLLAR & LIQUIDITY EASING ENGINE</span>', unsafe_allow_html=True)
+st.caption("Dolar Çöküşü & Büyüme Dalgasını Tüm Varlıklarda Eşzamanlı Okuyan Model")
 
 try:
     df_grid = engine.fetch_synchronized_grid()
@@ -287,7 +283,6 @@ try:
     else:
         results, regime_info = engine.compute_all_asset_scores(df_grid)
 
-        # HAKİKİ REJİM BANDI
         st.markdown(f"""
         <div class="regime-box {regime_info['css']}">
             Mevcut Küresel Makro Rejim: {regime_info['name']}<br>
