@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v35.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v36.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -28,13 +28,14 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-count = st_autorefresh(interval=60000, limit=None, key="macro_350_refresh")
+count = st_autorefresh(interval=60000, limit=None, key="macro_360_refresh")
 
 # ==========================================
-# 2. SENKRONİZE QUANT MAKRO MOTORU (v35.0)
+# 2. 24/5 CANLI VADELİ QUANT MOTORU (v36.0)
 # ==========================================
-class SynchronizedMacroEngine:
+class Live245MacroEngine:
     def __init__(self):
+        # 23/5 ve 24/7 Kesintisiz Akış Varlık Havuzu
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
             'NQ=F': 'NQ',           # Nasdaq 100 Vadeli
@@ -45,9 +46,8 @@ class SynchronizedMacroEngine:
             'EURUSD=X': 'EUR',      # Dolar Gücü (Ters DXY)
             'USDJPY=X': 'JPY',      # Carry Trade
             'BTC-USD': 'BTC',       # 24/7 Global Likidite
-            'IEF': 'BONDS',         # 7-10Y Hazine Tahvili
-            'TLT': 'TLT',           # 20+ Yıl Hazine Tahvili
-            'TIP': 'TIP',           # TIPS (Reel Faiz)
+            'ZN=F': 'BONDS_10Y',    # 10Y Hazine Vadeli (23/5 Canlı)
+            'ZB=F': 'BONDS_30Y',    # 30Y Uzun Vade Vadeli (23/5 Canlı)
             'HYG': 'HYG',           # Junk Kredi
             'LQD': 'LQD',           # IG Kredi
             'XLK': 'XLK',           # Teknoloji
@@ -91,7 +91,6 @@ class SynchronizedMacroEngine:
         return df
 
     def calculate_equalized_momentum(self, s, asset_name):
-        """Endekslerin oynaklık farkını eşitleyen kalibre momentum formülü."""
         if s is None or len(s) < 32:
             return 0.0
         
@@ -104,7 +103,6 @@ class SynchronizedMacroEngine:
         pct = s.pct_change().dropna()
         vol = pct.tail(32).std()
         
-        # Endeks Volatilite Tabanı (S&P ve Nasdaq'ın birbirini ezmesini önler)
         if asset_name in ['SPX', 'NQ']:
             base_vol = 0.003 if asset_name == 'SPX' else 0.0045
             vol = max(vol, base_vol)
@@ -117,7 +115,7 @@ class SynchronizedMacroEngine:
     def compute_all_asset_scores(self, df):
         scores = {}
         
-        # 1. KALİBRE EDİLMİŞ MOMENTUMLAR
+        # 1. 24/5 CANLI MOMENTUMLAR (Asla 0 Kalmaz)
         spx_mom = self.calculate_equalized_momentum(df['SPX'], 'SPX')
         nq_mom = self.calculate_equalized_momentum(df['NQ'], 'NQ')
         xau_mom = self.calculate_equalized_momentum(df['XAU'], 'XAU')
@@ -126,38 +124,51 @@ class SynchronizedMacroEngine:
         btc_mom = self.calculate_equalized_momentum(df['BTC'], 'BTC')
         jpy_mom = self.calculate_equalized_momentum(df['JPY'], 'JPY')
         dxy_mom = -self.calculate_equalized_momentum(df['EUR'], 'EUR')
-        yield_mom = -self.calculate_equalized_momentum(df['BONDS'], 'BONDS')
+        
+        # 24/5 Canlı Tahvil Vadeli İvmeleri
+        yield_mom = -self.calculate_equalized_momentum(df['BONDS_10Y'], 'BONDS')
+        yield_curve_slope = self.calculate_equalized_momentum(df['BONDS_10Y'] / (df['BONDS_30Y'] + 1e-6), 'RATIO')
         
         copper_gold = self.calculate_equalized_momentum(df['COPPER'] / (df['XAU'] + 1e-6), 'RATIO')
         gold_oil = self.calculate_equalized_momentum(df['XAU'] / (df['OIL'] + 1e-6), 'RATIO')
         slv_gld = self.calculate_equalized_momentum(df['XAG'] / (df['XAU'] + 1e-6), 'RATIO')
-        xme_gld = self.calculate_equalized_momentum(df['XME'] / (df['XAU'] + 1e-6), 'RATIO')
         
-        real_yield_shock = self.calculate_equalized_momentum(df['TIP'] / (df['TLT'] + 1e-6), 'RATIO')
-        credit_risk = self.calculate_equalized_momentum(df['HYG'] / (df['LQD'] + 1e-6), 'RATIO')
-        credit_flight = self.calculate_equalized_momentum(df['HYG'] / (df['TLT'] + 1e-6), 'RATIO')
-        sector_rot = self.calculate_equalized_momentum(df['XLK'] / (df['XLF'] + 1e-6), 'RATIO')
-        breadth = self.calculate_equalized_momentum(df['SPX'] / (df['RSP'] + 1e-6), 'RATIO')
+        # Pre-Market Kapalıysa Canlı Sentetik Alternatifler Devreye Girer
+        xme_raw = self.calculate_equalized_momentum(df['XME'] / (df['XAU'] + 1e-6), 'RATIO')
+        xme_gld = xme_raw if abs(xme_raw) > 0.05 else copper_gold # Kapalıysa Bakır/Altın yedekler
+        
+        credit_risk_raw = self.calculate_equalized_momentum(df['HYG'] / (df['LQD'] + 1e-6), 'RATIO')
+        credit_risk = credit_risk_raw if abs(credit_risk_raw) > 0.05 else (0.5 * spx_mom + 0.5 * jpy_mom)
+        
+        credit_flight_raw = self.calculate_equalized_momentum(df['HYG'] / (df['BONDS_30Y'] + 1e-6), 'RATIO')
+        credit_flight = credit_flight_raw if abs(credit_flight_raw) > 0.05 else (0.5 * spx_mom - 0.5 * yield_mom)
+        
+        sector_rot_raw = self.calculate_equalized_momentum(df['XLK'] / (df['XLF'] + 1e-6), 'RATIO')
+        sector_rot = sector_rot_raw if abs(sector_rot_raw) > 0.05 else (nq_mom - spx_mom)
+        
+        breadth_raw = self.calculate_equalized_momentum(df['SPX'] / (df['RSP'] + 1e-6), 'RATIO')
+        breadth = breadth_raw if abs(breadth_raw) > 0.05 else spx_mom
+        
+        real_yield_shock = yield_curve_slope # 24/5 Getiri Eğrisi Şoku
 
-        # REJİM TESPİTİ
-        growth_v = (0.4 * credit_risk) + (0.3 * credit_flight) + (0.3 * copper_gold)
-        tightness_v = (0.5 * yield_mom) + (0.3 * dxy_mom) + (0.2 * real_yield_shock)
+        # 2. HAKİKİ MAKRO REJİM TESPİTİ (Pre-Market Korumalı)
+        growth_v = (0.35 * credit_risk) + (0.35 * credit_flight) + (0.30 * copper_gold)
+        tightness_v = (0.50 * yield_mom) + (0.30 * dxy_mom) + (0.20 * gold_oil)
 
-        if growth_v > 0 and tightness_v <= 0:
+        if growth_v > 0.2 and tightness_v <= 0:
             regime_info = {'name': "☀️ GOLDILOCKS (Güçlü Büyüme / Düşük Enflasyon)", 'css': "regime-goldilocks", 'desc': "Kredi piyasası sağlıklı, hisseler güçlü."}
-        elif growth_v > 0 and tightness_v > 0:
+        elif growth_v > 0.2 and tightness_v > 0.2:
             regime_info = {'name': "🚀 REFLASYON (Güçlü Büyüme / Yüksek Enflasyon)", 'css': "regime-reflation", 'desc': "Emtialar ve değer hisseleri lider."}
-        elif growth_v <= 0 and tightness_v > 0:
-            regime_info = {'name': "🌋 STAGFLASYON & SIKIŞMA (Kredi Stresi / Faiz Baskısı)", 'css': "regime-stagflation", 'desc': "Kredi piyasası ve büyüme baskı altında."}
+        elif growth_v <= 0.2 and tightness_v > 0.2:
+            regime_info = {'name': "🌋 STAGFLASYON & SIKIŞMA (Kredi Stresi / Faiz Baskısı)", 'css': "regime-stagflation", 'desc': "Kredi piyasası ve büyüme baskı altında, faizler yüksek."}
         else:
             regime_info = {'name': "❄️ DEFLASYON / KRİZ (Toplu Satış Baskısı)", 'css': "regime-deflation", 'desc': "Nakit güvenli liman, riskli varlıklar baskıda."}
 
-        # HESAPLAMA MOTORU
+        # 3. HESAPLAMA MOTORU
         def build_result(base_weights, factors_dict):
             multipliers = {}
             for k, w in base_weights.items():
                 val = abs(factors_dict.get(k, 0.0))
-                # Değeri 0 olan kapalı ETF'ler ağırlığı yapay şişiremez
                 boost = 1.2 if ('_Mom' in k and val > 0.1) else (0.8 if val > 0.05 else 0.0)
                 multipliers[k] = abs(w) * (1.0 + (min(val, 2.0) ** boost))
             
@@ -167,11 +178,10 @@ class SynchronizedMacroEngine:
                 sign = 1.0 if w >= 0 else -1.0
                 raw_norm = (multipliers[k] / total_att) * 100.0
                 
-                # Fiyat İvmesi Tavanı & Dış Proxy Limiti
                 if '_Mom' in k:
                     raw_norm = max(min(raw_norm, 45.0), 30.0)
                 elif k in ['Carry_Trade', 'BTC_Liquidity']:
-                    raw_norm = min(raw_norm, 8.0) # Sıkı Dış Sınır
+                    raw_norm = min(raw_norm, 8.0)
                     
                 dyn_weights[k] = raw_norm * sign
 
@@ -185,7 +195,7 @@ class SynchronizedMacroEngine:
                 contribution = val * (w / 100.0)
                 breakdown.append({
                     'Katman (Öncü Faktör)': k,
-                    'Senkronize İvme': round(val, 2),
+                    'Canlı İvme': round(val, 2),
                     'Dinamik Ağırlık (%)': round(w, 1),
                     'Net Katkı': round(contribution, 3)
                 })
@@ -219,7 +229,7 @@ class SynchronizedMacroEngine:
         }
         scores['SPX'] = build_result(spx_base, spx_factors)
 
-        # NASDAQ (S&P ile Tam Eşitlenmiş Simetrik Ağırlıklar)
+        # NASDAQ
         nq_factors = {
             'NQ_Mom': nq_mom, 'Sector_Rotation': sector_rot, 'Credit_Flight_Safety': credit_flight,
             'Credit_Risk_Spread': credit_risk, 'Carry_Trade': jpy_mom, 'BTC_Liquidity': btc_mom,
@@ -263,11 +273,11 @@ class SynchronizedMacroEngine:
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = SynchronizedMacroEngine()
+engine = Live245MacroEngine()
 
-st.title("🏛️ TIER-1 MASTER TERMINAL (v35.0)")
-st.markdown('<span class="status-badge">⚡ SYNCHRONIZED BETA & INDEX EQUALIZER ENGINE</span>', unsafe_allow_html=True)
-st.caption("Endeksler Arası Volatilite Eşitlemesi + Kapalı Seans Ağırlık Kilidi")
+st.title("🏛️ TIER-1 MASTER TERMINAL (v36.0)")
+st.markdown('<span class="status-badge">⚡ 24/5 CME LIVE FUTURES & PRE-MARKET SHIELD</span>', unsafe_allow_html=True)
+st.caption("23/5 Canlı Hazine Vadeli Akışı + Sıfırlanma Korumalı Makro Rejim")
 
 try:
     df_grid = engine.fetch_synchronized_grid()
@@ -277,6 +287,7 @@ try:
     else:
         results, regime_info = engine.compute_all_asset_scores(df_grid)
 
+        # HAKİKİ REJİM BANDI
         st.markdown(f"""
         <div class="regime-box {regime_info['css']}">
             Mevcut Küresel Makro Rejim: {regime_info['name']}<br>
