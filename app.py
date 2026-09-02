@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 UNIFIED TERMINAL (v70.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v70.1)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -26,14 +26,19 @@ st.markdown("""
     .div-bull { background-color: #004D40; color: #00E676; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #00E676; font-size: 13px; display: inline-block; margin-top: 5px; }
     .div-bear { background-color: #4A148C; color: #FF1744; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #FF1744; font-size: 13px; display: inline-block; margin-top: 5px; }
     .div-neutral { background-color: #263238; color: #ECEFF1; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #78909C; font-size: 13px; display: inline-block; margin-top: 5px; }
+    .commentary-card { background-color: #121824; border: 1px solid #2A364F; border-radius: 6px; padding: 12px 16px; margin-top: 10px; font-size: 13px; line-height: 1.6; }
+    .commentary-header { font-weight: bold; color: #64B5F6; margin-bottom: 4px; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+    .action-badge { background-color: #1E293B; border-left: 3px solid #00E676; padding: 6px 10px; margin-top: 6px; border-radius: 0 4px 4px 0; font-weight: bold; color: #F8FAFC; }
+    .action-badge-bear { border-left-color: #FF1744; }
+    .action-badge-neutral { border-left-color: #94A3B8; }
     </style>
     """, unsafe_allow_html=True)
 
 # 1 dakikada bir otomatik yenile
-count = st_autorefresh(interval=60000, limit=None, key="macro_700_refresh")
+count = st_autorefresh(interval=60000, limit=None, key="macro_701_refresh")
 
 # ==========================================
-# 2. BÜTÜNLEŞİK QUANT MAKRO MOTORU (v70.0)
+# 2. v70.0 MATEMATİKSEL QUANT MOTORU (DOKUNULMADI)
 # ==========================================
 class UnifiedMacroEngine:
     def __init__(self):
@@ -92,16 +97,13 @@ class UnifiedMacroEngine:
         return df
 
     def calculate_daily_momentum(self, s):
-        """Günün ve 4 Saatin Sarsılmaz Ana Makro İvmesi."""
         if s is None or len(s) < 32:
-            return 0.0
+            return 0.0, 0.0
         
-        # Günlük Getiri (~32 bar) + 4 Saatlik Trend (~16 bar)
         r_daily = (s.iloc[-1] / s.iloc[-32]) - 1.0
         r_4h    = (s.iloc[-1] / s.iloc[-17]) - 1.0
         r_1h    = (s.iloc[-1] / s.iloc[-5])  - 1.0
         
-        # Günlük Makro Ağırlık: %50 Günlük + %30 4H + %20 1H
         macro_mom = (0.50 * r_daily) + (0.30 * r_4h) + (0.20 * r_1h)
         
         pct = s.pct_change().dropna()
@@ -110,39 +112,36 @@ class UnifiedMacroEngine:
             vol = 0.0035
             
         sharpe = macro_mom / vol
-        return float(np.clip(sharpe, -2.5, 2.5))
+        raw_1h = r_1h / vol
+        return float(np.clip(sharpe, -2.5, 2.5)), float(np.clip(raw_1h, -2.5, 2.5))
 
     def compute_all_asset_scores(self, df):
         scores = {}
         
         # 1. GÜNLÜK VE HAFTALIK SARSILMAZ MAKRO ÇAPALAR
-        dxy_macro = -self.calculate_daily_momentum(df['EUR'])          # Dolar Gücü
-        yield_macro = -self.calculate_daily_momentum(df['BONDS_10Y'])   # 10Y Faiz
-        credit_risk = self.calculate_daily_momentum(df['HYG'] / (df['LQD'] + 1e-6)) # Kredi Stresi
-        real_yield_shock = self.calculate_daily_momentum(df['BONDS_10Y'] / (df['BONDS_30Y'] + 1e-6)) # Reel Faiz
-        copper_gold = self.calculate_daily_momentum(df['COPPER'] / (df['XAU'] + 1e-6))
-        gold_oil = self.calculate_daily_momentum(df['XAU'] / (df['OIL'] + 1e-6))
-        slv_gld = self.calculate_daily_momentum(df['XAG'] / (df['XAU'] + 1e-6))
-        xme_gld = self.calculate_daily_momentum(df['XME'] / (df['XAU'] + 1e-6))
-        sector_rot = self.calculate_daily_momentum(df['XLK'] / (df['XLF'] + 1e-6))
-        carry_macro = self.calculate_daily_momentum(df['JPY'])
-        btc_macro = self.calculate_daily_momentum(df['BTC'])
+        dxy_macro = -self.calculate_daily_momentum(df['EUR'])[0]
+        yield_macro = -self.calculate_daily_momentum(df['BONDS_10Y'])[0]
+        credit_risk = self.calculate_daily_momentum(df['HYG'] / (df['LQD'] + 1e-6))[0]
+        real_yield_shock = self.calculate_daily_momentum(df['BONDS_10Y'] / (df['BONDS_30Y'] + 1e-6))[0]
+        copper_gold = self.calculate_daily_momentum(df['COPPER'] / (df['XAU'] + 1e-6))[0]
+        gold_oil = self.calculate_daily_momentum(df['XAU'] / (df['OIL'] + 1e-6))[0]
+        slv_gld = self.calculate_daily_momentum(df['XAG'] / (df['XAU'] + 1e-6))[0]
+        xme_gld = self.calculate_daily_momentum(df['XME'] / (df['XAU'] + 1e-6))[0]
+        sector_rot = self.calculate_daily_momentum(df['XLK'] / (df['XLF'] + 1e-6))[0]
+        carry_macro = self.calculate_daily_momentum(df['JPY'])[0]
+        btc_macro = self.calculate_daily_momentum(df['BTC'])[0]
 
         # 2. HAM FİYAT İVMELERİ
-        raw_spx = self.calculate_daily_momentum(df['SPX'])
-        raw_nq  = self.calculate_daily_momentum(df['NQ'])
-        raw_xau = self.calculate_daily_momentum(df['XAU'])
-        raw_xag = self.calculate_daily_momentum(df['XAG'])
+        raw_spx, spx_1h = self.calculate_daily_momentum(df['SPX'])
+        raw_nq, nq_1h   = self.calculate_daily_momentum(df['NQ'])
+        raw_xau, xau_1h = self.calculate_daily_momentum(df['XAU'])
+        raw_xag, xag_1h = self.calculate_daily_momentum(df['XAG'])
 
-        # ==========================================
         # 3. VARLIK SINIFI EŞBÜTÜNLEŞMESİ (SENKRONİZASYON)
-        # ==========================================
-        # A) HİSSE SENEDİ PAZAR MOTORU (S&P 500 ve NASDAQ Asla Zıt Renk Yakamaz)
         equity_market_momentum = (0.50 * raw_spx) + (0.50 * raw_nq)
         spx_mom = (0.80 * equity_market_momentum) + (0.20 * raw_spx)
         nq_mom  = (0.80 * equity_market_momentum) + (0.20 * raw_nq)
 
-        # B) DEĞERLİ MADENLER MOTORU (Altın ve Gümüş Asla Zıt Renk Yakamaz)
         metals_market_momentum = (0.50 * raw_xau) + (0.50 * raw_xag)
         xau_mom = (0.80 * metals_market_momentum) + (0.20 * raw_xau)
         xag_mom = (0.80 * metals_market_momentum) + (0.20 * raw_xag)
@@ -162,8 +161,35 @@ class UnifiedMacroEngine:
         else:
             regime_info = {'name': "⚪ DENGELİ GÜNLÜK GEÇİŞ REJİMİ (Konsolidasyon)", 'css': "regime-neutral", 'desc': "Piyasa gün içi dengeli ve yönsüz konsolide oluyor."}
 
-        # 5. HESAPLAMA MOTORU
-        def build_unified_result(base_weights, factors_dict):
+        # 5. YORUMLAMA MOTORU (DETAYLI TAKTİKSEL REHBER)
+        def generate_commentary(score, micro_1h, asset_name):
+            if score > 15:
+                if micro_1h < -0.3:
+                    structure = f"4 Saatlik ana makro rüzgar güçlü alıcılı. Ancak son 1-2 saatte seans içi kâr satışı / düzeltme (pullback) yaşanıyor. Bu süzülme ana yükseliş trendini bozmamıştır."
+                    action = "⚠️ TUZAĞA DÜŞME: Fiyat düşüyor diye aceleyle Short açma. Destek seviyelerinden dönüş ara veya Long pozisyonunu koru."
+                    badge_cls = "action-badge"
+                else:
+                    structure = f"Fiyat momentumu ve küresel makro hidrolikler tam uyumlu şekilde yükselişi destekliyor."
+                    action = "🚀 TRENDİ SÜR: 4H Alım yönlü pozisyonlar güvenle taşınabilir. Direnç kırılımlarını takip et."
+                    badge_cls = "action-badge"
+            elif score < -15:
+                if micro_1h > 0.3:
+                    structure = f"4 Saatlik ana makro zemin satıcılı. Ancak fiyatta kısa vadeli bir tepki yükselişi (dead-cat bounce) görülüyor. Yükselişin arkasında kurumsal yakıt zayıf."
+                    action = "⚠️ DİKKAT: Yükselişe kanıp tepeden Long kovalama. Direnç seviyelerinden satış fırsatı (Sell the Rip) kolla."
+                    badge_cls = "action-badge-bear"
+                else:
+                    structure = f"Fiyat düşüşü ve küresel makro baskı tam uyumlu şekilde satıcıların elinde."
+                    action = "🩸 SATIŞ BASKISI DEVAM: 4H Satış yönlü pozisyonlar korunabilir. Destek kırılımlarını izle."
+                    badge_cls = "action-badge-bear"
+            else:
+                structure = "Pozitif ve negatif makro güçler birbirini dengeliyor. Piyasa ana bir kırılım öncesinde dengeli ve yönsüz."
+                action = "🛑 NAKİTTE BEKLE: Net bir trend kırılımı (+15 üstü veya -15 altı) gelene kadar yeni pozisyon açma."
+                badge_cls = "action-badge-neutral"
+
+            return {'structure': structure, 'action': action, 'badge_cls': badge_cls}
+
+        # 6. HESAPLAMA MOTORU
+        def build_unified_result(base_weights, factors_dict, micro_1h, asset_name):
             multipliers = {}
             for k, w in base_weights.items():
                 val = abs(factors_dict.get(k, 0.0))
@@ -193,11 +219,8 @@ class UnifiedMacroEngine:
 
             breakdown_df = pd.DataFrame(breakdown).sort_values('Dinamik Ağırlık (%)', ascending=False)
             total_score = sum(factors_dict.get(k, 0.0) * (dyn_weights[k] / 100.0) for k in dyn_weights)
-            
-            # Sarsılmaz 1.4 Böleni
             final_score = np.tanh(total_score / 1.4) * 100
 
-            # GÜVEN EŞİĞİ (±15 Nötr Alanı)
             if final_score > 15:
                 msg = "🚀 GÜÇLÜ BOĞA TRENDİ (4H Pozisyon Yönü: ALIM)"
                 css = "div-bull"
@@ -208,7 +231,9 @@ class UnifiedMacroEngine:
                 msg = "⚪ DENGELİ KONSOLİDASYON (Piyasa Yönsüz / Bekle)"
                 css = "div-neutral"
 
-            return {'score': final_score, 'table': breakdown_df, 'msg': msg, 'css': css}
+            commentary = generate_commentary(final_score, micro_1h, asset_name)
+
+            return {'score': final_score, 'table': breakdown_df, 'msg': msg, 'css': css, 'commentary': commentary}
 
         # S&P 500
         spx_factors = {
@@ -223,9 +248,9 @@ class UnifiedMacroEngine:
             'DXY_Pressure': -10.0, 'Sector_Rotation': 5.0, 'Copper_Gold': 5.0,
             'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0, 'Real_Yield_Shock': -5.0
         }
-        scores['SPX'] = build_unified_result(spx_base, spx_factors)
+        scores['SPX'] = build_unified_result(spx_base, spx_factors, spx_1h, "S&P 500")
 
-        # NASDAQ (S&P İle Birebir Uyumlu Simetrik Model)
+        # NASDAQ
         nq_factors = {
             'NQ_Mom': nq_mom, 'Bond_Yield_Pressure': yield_macro,
             'Credit_Risk_Spread': credit_risk, 'DXY_Pressure': dxy_macro,
@@ -238,7 +263,7 @@ class UnifiedMacroEngine:
             'DXY_Pressure': -10.0, 'Sector_Rotation': 5.0, 'Copper_Gold': 5.0,
             'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0, 'Real_Yield_Shock': -5.0
         }
-        scores['NQ'] = build_unified_result(nq_base, nq_factors)
+        scores['NQ'] = build_unified_result(nq_base, nq_factors, nq_1h, "NASDAQ")
 
         # ALTIN
         xau_factors = {
@@ -251,9 +276,9 @@ class UnifiedMacroEngine:
             'Bond_Yield_Pressure': -15.0, 'Gold_Oil': 10.0, 'SLV_GLD_Beta': 5.0,
             'Copper_Gold': -3.0, 'Carry_Trade': 3.0, 'BTC_Liquidity': -2.0
         }
-        scores['XAU'] = build_unified_result(xau_base, xau_factors)
+        scores['XAU'] = build_unified_result(xau_base, xau_factors, xau_1h, "ALTIN")
 
-        # GÜMÜŞ (Altın İle Birebir Uyumlu Model)
+        # GÜMÜŞ
         xag_factors = {
             'XAG_Mom': xag_mom, 'Real_Yield_Shock': real_yield_shock, 'DXY_Pressure': dxy_macro,
             'Bond_Yield_Pressure': yield_macro, 'Copper_Gold': copper_gold, 'XME_GLD_Ratio': xme_gld,
@@ -264,7 +289,7 @@ class UnifiedMacroEngine:
             'Bond_Yield_Pressure': -10.0, 'Copper_Gold': 10.0, 'XME_GLD_Ratio': 10.0,
             'SLV_GLD_Beta': 5.0, 'Gold_Oil': 5.0, 'BTC_Liquidity': 5.0
         }
-        scores['XAG'] = build_unified_result(xag_base, xag_factors)
+        scores['XAG'] = build_unified_result(xag_base, xag_factors, xag_1h, "GÜMÜŞ")
 
         return scores, regime_info
 
@@ -273,9 +298,9 @@ class UnifiedMacroEngine:
 # ==========================================
 engine = UnifiedMacroEngine()
 
-st.title("🏛️ TIER-1 UNIFIED TERMINAL (v70.0)")
-st.markdown('<span class="status-badge">🛡️ ASSET-CLASS CO-INTEGRATION & DAILY MACRO</span>', unsafe_allow_html=True)
-st.caption("Günün & Haftanın Sarsılmaz Makrosu + Kardeş Varlıkların %100 Senkronizasyonu")
+st.title("🏛️ TIER-1 UNIFIED TERMINAL (v70.1)")
+st.markdown('<span class="status-badge">🛡️ INSTITUTIONAL TACTICAL COMMENTARY ACTIVE</span>', unsafe_allow_html=True)
+st.caption("v70.0 Sarsılmaz Makro Çekirdeği + Canlı Taktiksel İşlem Yorum Paneli")
 
 try:
     df_grid = engine.fetch_synchronized_grid()
@@ -300,6 +325,7 @@ try:
             table = res['table']
             div_msg = res['msg']
             div_class = res['css']
+            commentary = res['commentary']
 
             col1, col2 = st.columns([1, 2])
             with col1:
@@ -315,6 +341,16 @@ try:
 
                 st.markdown(f"<h1 style='color: {c}; font-size: 55px; margin:0;'>{score:.1f}</h1>", unsafe_allow_html=True)
                 st.markdown(f'<div class="{div_class}">{div_msg}</div>', unsafe_allow_html=True)
+                
+                # YENİ EKLENEN KURUMSAL YORUM VE AKSİYON KARTI
+                st.markdown(f"""
+                <div class="commentary-card">
+                    <div class="commentary-header">📊 Portföy Masası Teşhisi:</div>
+                    <div>{commentary['structure']}</div>
+                    <div class="{commentary['badge_cls']}">🎯 Aksiyon: {commentary['action']}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
             with col2:
                 if not table.empty:
                     fig = go.Figure(go.Bar(
