@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 CENTURY TERMINAL (v100.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v105.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -35,12 +35,13 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-count = st_autorefresh(interval=60000, limit=None, key="macro_1000_refresh")
+# 1 dakikada bir otomatik yenile
+count = st_autorefresh(interval=60000, limit=None, key="macro_1050_refresh")
 
 # ==========================================
-# 2. THE CENTURY QUANT MAKRO MOTORU (v100.0)
+# 2. BEŞLİ MASTER QUANT MAKRO MOTORU (v105.0)
 # ==========================================
-class CenturyMacroEngine:
+class UnifiedFiveAssetEngine:
     def __init__(self):
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
@@ -51,7 +52,8 @@ class CenturyMacroEngine:
             'CL=F': 'OIL',          # Ham Petrol Vadeli
             'EURUSD=X': 'EUR',      # Dolar Gücü (Ters DXY)
             'USDJPY=X': 'JPY',      # Carry Trade
-            'BTC-USD': 'BTC',       # 24/7 Global Likidite
+            'BTC-USD': 'BTC',       # Bitcoin 24/7
+            'ETH-USD': 'ETH',       # Ethereum 24/7 (YENİ)
             'ZT=F': 'BONDS_2Y',     # 2Y Hazine Vadeli (Fed Radarı)
             'ZN=F': 'BONDS_10Y',    # 10Y Hazine Vadeli
             'ZB=F': 'BONDS_30Y',    # 30Y Uzun Vade Vadeli
@@ -120,13 +122,18 @@ class CenturyMacroEngine:
     def compute_all_asset_scores(self, df):
         scores = {}
         
-        # 1. HAM İVMELER
+        # 1. MEVCUT 4 VARLIĞIN HAM İVMELERİ (DOKUNULMADI)
         raw_spx = self.calculate_daily_momentum_series(df['SPX'])
         raw_nq  = self.calculate_daily_momentum_series(df['NQ'])
         raw_xau = self.calculate_daily_momentum_series(df['XAU'])
         raw_xag = self.calculate_daily_momentum_series(df['XAG'])
 
-        # KARDEŞ VARLIK EŞBÜTÜNLEŞMESİ (Biri Yeşilken Diğeri Beyaz Kalamaz)
+        # KRİPTO İÇİN BTC + ETH BİLEŞİK SERİSİ
+        raw_btc = self.calculate_daily_momentum_series(df['BTC'])
+        raw_eth = self.calculate_daily_momentum_series(df['ETH']) if 'ETH' in df else raw_btc
+        crypto_composite_mom = (0.65 * raw_btc) + (0.35 * raw_eth) # %65 BTC + %35 ETH
+
+        # EŞBÜTÜNLEŞİK ORTAKLIKLAR (DOKUNULMADI)
         equity_common = (0.50 * raw_spx) + (0.50 * raw_nq)
         spx_mom = (0.75 * equity_common) + (0.25 * raw_spx)
         nq_mom  = (0.75 * equity_common) + (0.25 * raw_nq)
@@ -135,7 +142,7 @@ class CenturyMacroEngine:
         xau_mom = (0.75 * metals_common) + (0.25 * raw_xau)
         xag_mom = (0.75 * metals_common) + (0.25 * raw_xag)
 
-        btc_macro = self.calculate_daily_momentum_series(df['BTC'])
+        btc_macro = raw_btc
         jpy_macro = self.calculate_daily_momentum_series(df['JPY'])
         dxy_macro = -self.calculate_daily_momentum_series(df['EUR'])
         
@@ -148,7 +155,6 @@ class CenturyMacroEngine:
         copper_gold = self.calculate_ratio_momentum_series(df['COPPER'], df['XAU'])
         gold_oil = self.calculate_ratio_momentum_series(df['XAU'], df['OIL'])
         
-        # Rasyo Yamyamlığı Kalkanı: SLV/GLD ve XME negatif sapma yaratarak ana yönü yutamaz
         raw_slv_gld = self.calculate_ratio_momentum_series(df['XAG'], df['XAU'])
         slv_gld = raw_slv_gld.clip(-1.0, 1.5)
         
@@ -156,9 +162,13 @@ class CenturyMacroEngine:
         xme_gld = raw_xme.clip(-1.0, 1.5)
         
         sector_rot = self.calculate_ratio_momentum_series(df['XLK'], df['XLF']).clip(-1.2, 1.2)
+        
+        # KRİPTOYA ÖZGÜ İÇ RASYOLAR
+        eth_btc_beta = self.calculate_ratio_momentum_series(df['ETH'], df['BTC']).clip(-1.5, 1.5) if 'ETH' in df else pd.Series(0.0, index=df.index)
 
         factors_series_pool = {
             'SPX_Mom': spx_mom, 'NQ_Mom': nq_mom, 'XAU_Mom': xau_mom, 'XAG_Mom': xag_mom,
+            'Crypto_Mom': crypto_composite_mom, 'ETH_BTC_Beta': eth_btc_beta,
             'Fed_Pivot_Pressure': fed_pivot_pressure, 'Bond_Yield_Pressure': yield_macro,
             'DXY_Pressure': dxy_macro, 'Real_Yield_Shock': real_yield_shock,
             'Credit_Risk_Spread': credit_risk, 'Credit_Flight_Safety': credit_flight,
@@ -167,7 +177,7 @@ class CenturyMacroEngine:
             'XME_GLD_Ratio': xme_gld, 'BTC_Liquidity': btc_macro, 'Carry_Trade': jpy_macro
         }
 
-        # REJİM MOTORU
+        # REJİM MOTORU (DOKUNULMADI)
         growth_raw = (0.4 * credit_risk) + (0.3 * copper_gold) + (0.3 * equity_common)
         tightness_raw = (0.4 * fed_pivot_pressure) + (0.3 * yield_macro) + (0.3 * dxy_macro)
 
@@ -178,7 +188,7 @@ class CenturyMacroEngine:
         z_tightness = tightness_raw.iloc[-1] / (t_vol + 1e-5)
 
         if z_growth > 0.3 and z_tightness <= 0.0:
-            regime_info = {'name': "☀️ GOLDILOCKS & FED LİKİDİTE GENİŞLEMESİ", 'css': "regime-goldilocks", 'desc': "Fed faiz baskısı kalktı, Dolar sakin. Hisse senetleri ve teknoloji için ideal ralli ortamı."}
+            regime_info = {'name': "☀️ GOLDILOCKS & FED LİKİDİTE GENİŞLEMESİ", 'css': "regime-goldilocks", 'desc': "Fed faiz baskısı kalktı, Dolar sakin. Hisse, Kripto ve teknoloji için ideal ralli ortamı."}
         elif z_growth > 0.3 and z_tightness > 0.3:
             regime_info = {'name': "🚀 REFLASYON (Güçlü Büyüme & Emtia Patlaması)", 'css': "regime-reflation", 'desc': "Gümüş, Bakır ve Sanayi hisseleri küresel büyümeyi fiyatlıyor."}
         elif z_growth <= 0.3 and z_tightness > 0.3:
@@ -188,7 +198,7 @@ class CenturyMacroEngine:
         else:
             regime_info = {'name': "⚪ DENGELİ GEÇİŞ REJİMİ (Konsolidasyon)", 'css': "regime-neutral", 'desc': "Piyasa dengeli ve yönsüz konsolide oluyor."}
 
-        # HESAPLAMA MOTORU
+        # HESAPLAMA MOTORU (DOKUNULMADI)
         def build_century_result(base_weights, target_mom_series, asset_name):
             bar_scores = []
             lookback_bars = min(len(df), 96)
@@ -245,11 +255,11 @@ class CenturyMacroEngine:
                 css = "div-neutral"
 
             if final_score > adaptive_threshold:
-                structure = "Fed faiz indirimi rüzgarı ve Dolar gevşemesi alıcıları güçlü destekliyor."
+                structure = "Fed faiz indirimi rüzgarı ve küresel likidite alıcıları güçlü destekliyor."
                 action = "🚀 TRENDİ SÜR: 4H Alım yönlü pozisyonlar güvenle taşınabilir. Direnç kırılımlarını takip et."
                 badge_cls = "action-badge"
             elif final_score < -adaptive_threshold:
-                structure = "Fed şahin baskısı ve yükselen faizler değerlemeleri eziyor."
+                structure = "Fed şahin baskısı, yükselen faizler ve likidite çekilmesi piyasayı eziyor."
                 action = "🩸 SATIŞ BASKISI DEVAM: 4H Satış yönlü pozisyonlar korunabilir. Destek kırılımlarını izle."
                 badge_cls = "action-badge-bear"
             else:
@@ -268,10 +278,11 @@ class CenturyMacroEngine:
                 'commentary': commentary
             }
 
-        # ----------------------------------------------------
-        # 4 VARLIK MATRİSLERİ (EŞİTLENMİŞ 10 KATMAN)
-        # ----------------------------------------------------
-        # 1. S&P 500 (ES=F)
+        # ====================================================
+        # MEVCUT 4 VARLIĞIN MATRİSLERİ (BİREBİR AYNI KORUNDU)
+        # ====================================================
+        
+        # 1. S&P 500 (DOKUNULMADI)
         spx_base = {
             'SPX_Mom': 35.0, 'Fed_Pivot_Pressure': -15.0, 'Credit_Risk_Spread': 15.0,
             'Credit_Flight_Safety': 10.0, 'Bond_Yield_Pressure': -10.0, 'DXY_Pressure': -10.0,
@@ -279,7 +290,7 @@ class CenturyMacroEngine:
         }
         scores['SPX'] = build_century_result(spx_base, spx_mom, "S&P 500")
 
-        # 2. NASDAQ (NQ=F - S&P ile Kusursuz Senkronize)
+        # 2. NASDAQ (DOKUNULMADI)
         nq_base = {
             'NQ_Mom': 35.0, 'Fed_Pivot_Pressure': -20.0, 'Sector_Rotation': 15.0,
             'Bond_Yield_Pressure': -15.0, 'Credit_Risk_Spread': 10.0, 'DXY_Pressure': -10.0,
@@ -287,7 +298,7 @@ class CenturyMacroEngine:
         }
         scores['NQ'] = build_century_result(nq_base, nq_mom, "NASDAQ")
 
-        # 3. ALTIN (GC=F)
+        # 3. ALTIN (DOKUNULMADI)
         xau_base = {
             'XAU_Mom': 35.0, 'Real_Yield_Shock': 20.0, 'Fed_Pivot_Pressure': -15.0,
             'DXY_Pressure': -15.0, 'Bond_Yield_Pressure': -10.0, 'Gold_Oil': 10.0,
@@ -295,7 +306,7 @@ class CenturyMacroEngine:
         }
         scores['XAU'] = build_century_result(xau_base, xau_mom, "ALTIN")
 
-        # 4. GÜMÜŞ (SI=F - Altın ile Kusursuz Senkronize)
+        # 4. GÜMÜŞ (DOKUNULMADI)
         xag_base = {
             'XAG_Mom': 35.0, 'Fed_Pivot_Pressure': -15.0, 'DXY_Pressure': -15.0,
             'Real_Yield_Shock': 15.0, 'Copper_Gold': 10.0, 'XME_GLD_Ratio': 10.0,
@@ -303,16 +314,33 @@ class CenturyMacroEngine:
         }
         scores['XAG'] = build_century_result(xag_base, xag_mom, "GÜMÜŞ")
 
+        # ====================================================
+        # YENİ EKLENEN 5. VARLIK: KRİPTO (BTC + ETH BÜTÜNLEŞİK)
+        # ====================================================
+        crypto_base = {
+            'Crypto_Mom': 30.0,            # BTC (%65) + ETH (%35) Kinetik Fiyat Gücü
+            'Fed_Pivot_Pressure': -20.0,   # 2Y Fed Faiz İndirimi (#1 Kripto Yakıtı)
+            'Sector_Rotation': 10.0,       # Teknoloji Risk İştahı Spillover
+            'ETH_BTC_Beta': 10.0,          # Altcoin Risk İştahı (ETH outperformance)
+            'DXY_Pressure': -10.0,         # Dolar Gevşemesi (Fiat debasement)
+            'Credit_Risk_Spread': 10.0,    # Kurumsal Risk İştahı (Junk credit)
+            'Carry_Trade': 5.0,            # Global Fiat Likidite Fonlaması
+            'Copper_Gold': 5.0,            # Küresel Büyüme Nabzı
+            'Real_Yield_Shock': -5.0,      # Reel Faiz Baskısı
+            'Bond_Yield_Pressure': -5.0    # 10Y Faiz Baskısı
+        }
+        scores['CRYPTO'] = build_century_result(crypto_base, crypto_composite_mom, "KRİPTO (BTC+ETH)")
+
         return scores, regime_info
 
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = CenturyMacroEngine()
+engine = UnifiedFiveAssetEngine()
 
-st.title("🏛️ TIER-1 MASTER TERMINAL (v100.0)")
-st.markdown('<span class="status-badge">👑 THE CENTURY MASTER ENGINE (ZERO-DIVERGENCE)</span>', unsafe_allow_html=True)
-st.caption("Rasyo Yamyamlığı Yok Edilmiş + Eşbütünleşik Kardeş Varlık Uyumu + 10 Katman")
+st.title("🏛️ TIER-1 MASTER TERMINAL (v105.0)")
+st.markdown('<span class="status-badge">👑 5-ASSET MASTER ENGINE (CRYPTO UNIFIED)</span>', unsafe_allow_html=True)
+st.caption("S&P 500, NASDAQ, ALTIN, GÜMÜŞ ve KRİPTO (BTC+ETH) Tam Entegre 10-Katmanlı Terminal")
 
 try:
     df_grid = engine.fetch_synchronized_grid()
@@ -330,7 +358,14 @@ try:
         </div>
         """, unsafe_allow_html=True)
 
-        tab_spx, tab_nq, tab_xau, tab_xag = st.tabs(["S&P 500 (ES=F)", "NASDAQ (NQ=F)", "ALTIN (GC=F)", "GÜMÜŞ (SI=F)"])
+        # 5 SEKME BİR ARADA
+        tab_spx, tab_nq, tab_xau, tab_xag, tab_crypto = st.tabs([
+            "S&P 500 (ES=F)", 
+            "NASDAQ (NQ=F)", 
+            "ALTIN (GC=F)", 
+            "GÜMÜŞ (SI=F)", 
+            "KRİPTO (BTC+ETH)"
+        ])
 
         def render_view(res, asset_title):
             score = res['score']
@@ -386,6 +421,9 @@ try:
 
         with tab_xag:
             render_view(results.get('XAG'), "GÜMÜŞ (SI=F)")
+
+        with tab_crypto:
+            render_view(results.get('CRYPTO'), "KRİPTO (BTC+ETH)")
 
 except Exception as e:
     st.error(f"Sistem Hatası: {str(e)}")
