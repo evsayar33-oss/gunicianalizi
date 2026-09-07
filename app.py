@@ -9,73 +9,72 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ==========================================
-# 1. TERMINAL UI VE STİL YAPILANDIRMASI
+# 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 RESILIENT DESK TERMINAL (v170.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 PREDICTIVE TERMINAL (v180.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
-    .stApp { background-color: #06080D; color: #E2E8F0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; }
-    h1, h2, h3 { font-family: 'Courier New', monospace; letter-spacing: -0.5px; }
-    .status-badge { background-color: #0F172A; border: 1px solid #1E293B; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; color: #94A3B8; display: inline-block; margin-bottom: 8px; }
-    .health-badge { background-color: #064E3B; border: 1px solid #059669; padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: bold; color: #34D399; }
-    .regime-box { padding: 12px 18px; border-radius: 4px; font-weight: bold; font-size: 13px; margin-bottom: 14px; border-left: 5px solid; font-family: 'Courier New', monospace; }
-    .regime-goldilocks { background-color: #02231A; color: #10B981; border-color: #10B981; }
-    .regime-reflation { background-color: #271C04; color: #F59E0B; border-color: #F59E0B; }
-    .regime-stagflation { background-color: #2D081D; color: #EC4899; border-color: #EC4899; }
-    .regime-deflation { background-color: #2A0909; color: #EF4444; border-color: #EF4444; }
-    .regime-voldisruption { background-color: #2F1202; color: #F97316; border-color: #F97316; }
-    .regime-neutral { background-color: #0F172A; color: #94A3B8; border-color: #475569; }
-    .div-bull { background-color: #064E3B; color: #34D399; padding: 8px 14px; border-radius: 4px; font-weight: bold; border: 1px solid #059669; font-size: 13px; display: inline-block; margin-top: 6px; }
-    .div-bear { background-color: #4C0519; color: #F87171; padding: 8px 14px; border-radius: 4px; font-weight: bold; border: 1px solid #E11D48; font-size: 13px; display: inline-block; margin-top: 6px; }
-    .div-neutral { background-color: #1E293B; color: #94A3B8; padding: 8px 14px; border-radius: 4px; font-weight: bold; border: 1px solid #334155; font-size: 13px; display: inline-block; margin-top: 6px; }
-    .commentary-card { background-color: #0B111E; border: 1px solid #1E293B; border-radius: 4px; padding: 12px 14px; margin-top: 8px; font-size: 12px; line-height: 1.5; }
-    .commentary-header { font-weight: bold; color: #38BDF8; margin-bottom: 4px; font-size: 12px; display: flex; align-items: center; gap: 6px; }
-    .action-badge { background-color: #0F172A; border-left: 3px solid #10B981; padding: 6px 10px; margin-top: 6px; border-radius: 0 4px 4px 0; font-weight: bold; color: #F8FAFC; }
-    .action-badge-bear { border-left-color: #EF4444; }
-    .action-badge-neutral { border-left-color: #64748B; }
+    .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    h1 { font-family: 'Courier New', monospace; font-size: 22px; }
+    h2, h3 { color: #ECEFF1; font-size: 15px; }
+    .regime-box { padding: 12px 18px; border-radius: 6px; font-weight: bold; font-size: 13px; margin-bottom: 12px; border-left: 5px solid; }
+    .regime-goldilocks { background-color: #00332c; color: #00E676; border-color: #00E676; }
+    .regime-reflation { background-color: #332200; color: #FFD600; border-color: #FFD600; }
+    .regime-stagflation { background-color: #33001a; color: #FF4081; border-color: #FF4081; }
+    .regime-deflation { background-color: #330000; color: #FF1744; border-color: #FF1744; }
+    .regime-mixed { background-color: #262000; color: #FFB300; border-color: #FFB300; }
+    .regime-neutral { background-color: #263238; color: #ECEFF1; border-color: #78909C; }
+    .div-bull { background-color: #004D40; color: #00E676; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #00E676; font-size: 13px; display: inline-block; margin-top: 5px; }
+    .div-bear { background-color: #4A148C; color: #FF1744; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #FF1744; font-size: 13px; display: inline-block; margin-top: 5px; }
+    .div-neutral { background-color: #263238; color: #ECEFF1; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #78909C; font-size: 13px; display: inline-block; margin-top: 5px; }
+    .commentary-card { background-color: #121824; border: 1px solid #2A364F; border-radius: 6px; padding: 12px 16px; margin-top: 10px; font-size: 13px; line-height: 1.6; }
+    .commentary-header { font-weight: bold; color: #64B5F6; margin-bottom: 4px; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+    .action-badge { background-color: #1E293B; border-left: 3px solid #00E676; padding: 6px 10px; margin-top: 6px; border-radius: 0 4px 4px 0; font-weight: bold; color: #F8FAFC; }
+    .action-badge-bear { border-left-color: #FF1744; }
+    .action-badge-neutral { border-left-color: #94A3B8; }
     </style>
     """, unsafe_allow_html=True)
 
 # 1 dakikada bir otomatik yenile
-count = st_autorefresh(interval=60000, limit=None, key="resilient_engine_v170")
+count = st_autorefresh(interval=60000, limit=None, key="macro_v180_refresh")
 
 # ==========================================
-# 2. BULLETPROOF VERİ VE KİNEMATİK MOTORU
+# 2. SAĞLAMLAŞTIRILMIŞ QUANT MAKRO MOTORU
 # ==========================================
-class ResilientMacroEngine:
+class PredictiveKinematicEngine:
     def __init__(self):
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
             'NQ=F': 'NQ',           # Nasdaq 100 Vadeli
-            'GC=F': 'XAU',          # Ons Altın Vadeli
-            'SI=F': 'XAG',          # Ons Gümüş Vadeli
-            'HG=F': 'COPPER',       # Bakır Vadeli (Büyüme)
+            'GC=F': 'XAU',          # Altın Vadeli
+            'SI=F': 'XAG',          # Gümüş Vadeli
+            'HG=F': 'COPPER',       # Bakır Vadeli
             'CL=F': 'OIL',          # Ham Petrol Vadeli
-            'EURUSD=X': 'EUR',      # FX Dolar Baskı Proksisi
-            'USDJPY=X': 'JPY',      # Küresel Carry Trade
-            'BTC-USD': 'BTC',       # Kripto Likidite Barometresi
-            'ETH-USD': 'ETH',       # Kripto Risk İştahı
-            'ZT=F': 'BONDS_2Y',     # 2Y Hazine Vadelisi (Fed Beklentisi)
-            'ZN=F': 'BONDS_10Y',    # 10Y Hazine Vadelisi (Nominal Çapa)
-            'ZB=F': 'BONDS_30Y',    # 30Y Uzun Vade (Getiri Eğrisi Eğimi)
-            'TIP': 'TIPS_REAL',     # Reel Getiri (TIPS)
-            'HYG': 'HYG',           # Yüksek Getirili Kredi (Junk)
-            'LQD': 'LQD',           # Yatırım Yapılabilir Kredi (IG)
-            'KRE': 'KRE',           # Bölgesel Bankalar
-            'XLF': 'XLF',           # Finans Sektörü
-            'XLK': 'XLK',           # Teknoloji Sektörü
-            '^VIX': 'VIX'           # CBOE Volatilite Endeksi
+            'EURUSD=X': 'EUR',      # Dolar Gücü (Ters DXY)
+            'USDJPY=X': 'JPY',      # Carry Trade
+            'BTC-USD': 'BTC',       # Bitcoin 24/7
+            'ETH-USD': 'ETH',       # Ethereum 24/7
+            'ZT=F': 'BONDS_2Y',     # 2Y Hazine Vadeli
+            'ZN=F': 'BONDS_10Y',    # 10Y Hazine Vadeli
+            'ZB=F': 'BONDS_30Y',    # 30Y Uzun Vade Vadeli
+            'HYG': 'HYG',           # Junk Kredi
+            'LQD': 'LQD',           # IG Kredi
+            'KRE': 'KRE',           # Bankacılık Stresi
+            'XLK': 'XLK',           # Teknoloji
+            'XLF': 'XLF',           # Finans
+            'RSP': 'RSP',           # Eşit Ağırlıklı S&P 500
+            'XME': 'XME'            # Madencilik Endeksi
         }
 
-    def fetch_ticker_safe(self, symbol):
+    def fetch_single_ticker(self, symbol, session):
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=5d&interval=15m"
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-            'Accept': '*/*',
-            'Referer': 'https://finance.yahoo.com'
+            'Accept': 'application/json,text/plain,*/*',
+            'Referer': 'https://finance.yahoo.com/'
         }
         try:
-            r = requests.get(url, headers=headers, timeout=3.5)
+            r = session.get(url, headers=headers, timeout=4.5)
             if r.status_code == 200:
                 data = r.json()
                 res = data['chart']['result'][0]
@@ -90,408 +89,370 @@ class ResilientMacroEngine:
         return pd.Series(dtype=float)
 
     @st.cache_data(ttl=60, show_spinner=False)
-    def fetch_resilient_grid(_self):
-        raw = {}
+    def fetch_synchronized_grid(_self):
+        raw_dict = {}
+        session = requests.Session()
+        
         def worker(sym, alias):
-            s = _self.fetch_ticker_safe(sym)
-            if not s.empty and len(s) > 8:
-                raw[alias] = s
+            s = _self.fetch_single_ticker(sym, session)
+            if not s.empty and len(s) > 4:
+                raw_dict[alias] = s
 
-        with ThreadPoolExecutor(max_workers=20) as executor:
+        with ThreadPoolExecutor(max_workers=10) as executor:
             for sym, alias in _self.symbol_map.items():
                 executor.submit(worker, sym, alias)
 
-        # Temel varlıklar çekilemediyse acil durum üret
-        if 'SPX' not in raw and 'NQ' in raw:
-            raw['SPX'] = raw['NQ']
-        elif 'NQ' not in raw and 'SPX' in raw:
-            raw['NQ'] = raw['SPX']
-            
-        if 'SPX' not in raw:
+        if not raw_dict:
             return pd.DataFrame()
 
-        # Birleştir ve asenkron boşlukları interpolasyonla doldur (ASLA dropna yapma!)
-        df = pd.DataFrame(raw).sort_index()
+        df = pd.DataFrame(raw_dict).sort_index()
+        # İleri ve geri doldurma ile senkronizasyon (asla satır silmeyerek göstergeleri korur)
         df = df.resample('15min').last().ffill().bfill()
 
-        # --- SELF-HEALING: EKSİK VERİLERİ SENTETİK OLARAK TAMAMLA ---
-        # 1. VIX eksikse, SPX'in 16 barlık getiri varyansından sentetik VIX türet
-        if 'VIX' not in df.columns or df['VIX'].isna().all() or df['VIX'].nunique() <= 1:
-            ret = df['SPX'].pct_change().fillna(0)
-            df['VIX'] = (ret.rolling(24).std().fillna(0.003) * np.sqrt(252 * 26) * 100).clip(12, 65)
-
-        # 2. TIPS (Reel Getiri) eksikse, 10Y Hazine vadelisini petrol şokuna göre adapte et
-        if 'TIPS_REAL' not in df.columns or df['TIPS_REAL'].isna().all():
-            base = df.get('BONDS_10Y', df['SPX'])
-            oil_impact = df.get('OIL', df['SPX']).pct_change().fillna(0)
-            df['TIPS_REAL'] = base * (1.0 - (0.05 * oil_impact))
-
-        # 3. KRE veya XLF eksikse çapraz bağla
-        if 'KRE' not in df.columns:
-            df['KRE'] = df.get('XLF', df['SPX'])
-        if 'XLF' not in df.columns:
-            df['XLF'] = df.get('KRE', df['SPX'])
-        if 'XLK' not in df.columns:
-            df['XLK'] = df.get('NQ', df['SPX'])
-
-        # 4. Kredi Spreadleri (HYG / LQD) eksikse
-        if 'HYG' not in df.columns:
-            df['HYG'] = df['SPX']
-        if 'LQD' not in df.columns:
-            df['LQD'] = df.get('BONDS_10Y', df['SPX'])
-
-        # 5. Metaller ve Döviz eksikse
-        if 'XAG' not in df.columns and 'XAU' in df.columns:
-            df['XAG'] = df['XAU']
-        if 'COPPER' not in df.columns and 'XAU' in df.columns:
-            df['COPPER'] = df['XAU']
-        if 'EUR' not in df.columns:
-            df['EUR'] = pd.Series(1.08, index=df.index)
-        if 'JPY' not in df.columns:
-            df['JPY'] = pd.Series(150.0, index=df.index)
-        if 'BONDS_2Y' not in df.columns:
-            df['BONDS_2Y'] = df.get('BONDS_10Y', df['SPX'])
-        if 'BONDS_30Y' not in df.columns:
-            df['BONDS_30Y'] = df.get('BONDS_10Y', df['SPX'])
+        # Eksik kalan sembol varsa kardeş varlıktan tamamla (Streamlit Cloud veri kesilmesini önler)
+        if 'SPX' not in df and 'NQ' in df: df['SPX'] = df['NQ']
+        if 'NQ' not in df and 'SPX' in df: df['NQ'] = df['SPX']
+        if 'ETH' not in df and 'BTC' in df: df['ETH'] = df['BTC']
+        if 'XAG' not in df and 'XAU' in df: df['XAG'] = df['XAU']
+        if 'COPPER' not in df and 'XAU' in df: df['COPPER'] = df['XAU']
+        if 'KRE' not in df and 'XLF' in df: df['KRE'] = df['XLF']
+        if 'XLK' not in df and 'NQ' in df: df['XLK'] = df['NQ']
+        if 'BONDS_2Y' not in df and 'BONDS_10Y' in df: df['BONDS_2Y'] = df['BONDS_10Y']
+        if 'BONDS_30Y' not in df and 'BONDS_10Y' in df: df['BONDS_30Y'] = df['BONDS_10Y']
+        if 'HYG' not in df and 'SPX' in df: df['HYG'] = df['SPX']
+        if 'LQD' not in df and 'BONDS_10Y' in df: df['LQD'] = df['BONDS_10Y']
 
         return df.ffill().bfill()
 
-    def calculate_bounded_kinematics(self, s):
+    def calculate_predictive_kinematics(self, s):
         """
-        GÜVENLİ VE DURAĞAN KİNEMATİK MOTOR:
-        - Volatility Floor (Varyans Tabanı): Standart sapma asla sıfıra yaklaşamaz.
-        - Seans kapalıyken Z-skorunun patlamasını engeller.
+        SENİN ORİJİNAL ÇALIŞAN KİNEMATİK MOTORUN:
+        Sıfırlama yapmaz, net hız, ivme ve elastisite üretir.
         """
-        if s is None or len(s) < 16:
-            return 0.0, 0.4
+        if s is None or s.empty:
+            return 0.0
         
-        # 1 Saatlik Log Hız (Velocity)
-        log_ret = np.log(s / s.shift(4)).dropna()
-        if len(log_ret) < 8:
-            return 0.0, 0.4
+        s_active = s.loc[s.shift() != s].dropna()
+        if len(s_active) < 16:
+            s_active = s.dropna()
             
-        v_curr = log_ret.iloc[-1]
-        v_mean = log_ret.tail(32).mean()
+        if len(s_active) < 16:
+            return 0.0
         
-        # Standart sapma tabanı (Payda sıfırlanıp skoru patlatamaz)
-        v_std = max(log_ret.tail(32).std(), 0.0018)
-        z_v = (v_curr - v_mean) / v_std
+        # 1. HIZLAR (1H ve 4H Getiri Hızı)
+        v1h = (s_active.iloc[-1] / s_active.iloc[-min(4, len(s_active)-1)]) - 1.0
+        v4h = (s_active.iloc[-1] / s_active.iloc[-min(16, len(s_active)-1)]) - 1.0
+        
+        # 2. İKİNCİ TÜREV (İvme / Güç Tükenmesi)
+        v1h_prev = (s_active.iloc[-min(4, len(s_active)-1)] / s_active.iloc[-min(8, len(s_active)-1)]) - 1.0 if len(s_active) >= 8 else v1h
+        acceleration = v1h - v1h_prev
+        
+        # 3. LASTİK BANDI ELASTİSİTESİ
+        rolling_mean_24 = s_active.tail(24).mean()
+        elasticity_stretch = (s_active.iloc[-1] - rolling_mean_24) / (rolling_mean_24 + 1e-6)
+        
+        pct = s_active.pct_change().dropna()
+        vol = pct.tail(32).std()
+        if pd.isna(vol) or vol < 1e-5:
+            vol = 0.0035
+            
+        predictive_mom = (0.45 * v1h) + (0.35 * acceleration * 2.0) - (0.20 * elasticity_stretch * 0.5) + (0.20 * v4h)
+        sharpe = predictive_mom / vol
+        return float(np.clip(sharpe, -2.5, 2.5))
 
-        # İkinci Türev (İvme)
-        accel = log_ret.diff().dropna()
-        a_curr = accel.iloc[-1] if len(accel) > 0 else 0.0
-        a_std = max(accel.tail(32).std(), 0.0012)
-        z_a = a_curr / a_std
-
-        # Ortalamaya Dönüş Elastisitesi
-        ema_24 = s.ewm(span=24, adjust=False).mean()
-        stretch = (s.iloc[-1] - ema_24.iloc[-1]) / (ema_24.iloc[-1] + 1e-6)
-        s_std = max(s.tail(32).std() / (s.tail(32).mean() + 1e-6), 0.002)
-        z_e = stretch / s_std
-
-        # Birleşik İtme Skoru
-        raw_k = (0.50 * z_v) + (0.35 * z_a) - (0.15 * z_e)
-        clamped_score = float(np.clip(raw_k, -2.5, 2.5))
-
-        # Seans Canlılık Katsayısı (Son 8 bardaki hareketlilik)
-        unique_ratio = s.tail(8).nunique() / 8.0
-        activity_w = float(np.clip(unique_ratio, 0.30, 1.0))
-
-        return clamped_score, activity_w
-
-    def calculate_ratio_kinematics(self, s1, s2):
+    def calculate_ratio_predictive(self, s1, s2):
         if s1 is None or s2 is None or s1.empty or s2.empty:
-            return 0.0, 0.3
-        common = s1.index.intersection(s2.index)
-        ratio = s1.loc[common] / (s2.loc[common] + 1e-6)
-        score, w1 = self.calculate_bounded_kinematics(ratio)
-        return score, w1
+            return 0.0
+        common_idx = s1.index.intersection(s2.index)
+        ratio = s1.loc[common_idx] / (s2.loc[common_idx] + 1e-6)
+        return self.calculate_predictive_kinematics(ratio)
 
-    def compute_all_indicators(self, df):
-        # 1. TEMEL VARLIK KİNEMATİKLERİ
-        raw_spx, w_spx = self.calculate_bounded_kinematics(df['SPX'])
-        raw_nq, w_nq   = self.calculate_bounded_kinematics(df['NQ'])
-        raw_xau, _     = self.calculate_bounded_kinematics(df['XAU'])
-        raw_xag, _     = self.calculate_bounded_kinematics(df['XAG'])
-        raw_btc, _     = self.calculate_bounded_kinematics(df['BTC'])
-        raw_eth, _     = self.calculate_bounded_kinematics(df['ETH'])
+    def detect_rigorous_macro_regime(self, factors):
+        carry = factors['Carry_Trade']
+        copper = factors['Copper_Gold']
+        dxy = factors['DXY_Pressure']
+        yields = factors['Bond_Yield_Pressure']
+        fed_pivot = factors['Fed_Pivot_Pressure']
+        credit = factors['Credit_Risk_Spread']
+        funding_stress = factors['Funding_Liquidity_Stress']
+        spx = factors['SPX_Mom']
 
-        # 2. KURUMSAL ORTAK PİYASA BETASI (COMMON EQUITY FACTOR)
-        # S&P ve Nasdaq arasındaki suni uçurumu kaldıran ana Barra / Fama-French faktörü:
-        common_equity_market = (0.50 * raw_spx) + (0.50 * raw_nq)
-
-        # 3. MAKRO FAKTÖR KATMANLARI (Eksiksiz 14 Katman)
-        vix_shock, _      = self.calculate_bounded_kinematics(df['VIX'])
-        dxy_pressure, _   = self.calculate_bounded_kinematics(-df['EUR'])
-        jpy_carry, _      = self.calculate_bounded_kinematics(df['JPY'])
-        fed_2y_yield, _   = self.calculate_bounded_kinematics(-df['BONDS_2Y'])
-        bonds_10y_yield, _= self.calculate_bounded_kinematics(-df['BONDS_10Y'])
-        
-        # Gerçek Reel Getiri (TIPS Tahvili Düşüşü = Reel Faiz Baskısı)
-        tips_raw, w_tips  = self.calculate_bounded_kinematics(df['TIPS_REAL'])
-        real_yield_shock  = -tips_raw
-        
-        curve_slope, _    = self.calculate_ratio_kinematics(df['BONDS_10Y'], df['BONDS_30Y'])
-        credit_risk, _    = self.calculate_ratio_kinematics(df['HYG'], df['LQD'])
-        banking_stress, _ = self.calculate_ratio_kinematics(df['KRE'], df['XLF'])
-        growth_pulse, _   = self.calculate_ratio_kinematics(df['COPPER'], df['XAU'])
-        gold_oil_pulse, _ = self.calculate_ratio_kinematics(df['XAU'], df['OIL'])
-        metals_beta, _    = self.calculate_ratio_kinematics(df['XAG'], df['XAU'])
-        tech_spread, _    = self.calculate_ratio_kinematics(df['XLK'], df['XLF'])
-        crypto_beta, _    = self.calculate_ratio_kinematics(df['ETH'], df['BTC'])
-
-        factors = {
-            'Equity_Market_Beta': common_equity_market,
-            'SPX_Idiosyncratic': raw_spx,
-            'NQ_Idiosyncratic': raw_nq,
-            'XAU_Momentum': raw_xau,
-            'XAG_Momentum': raw_xag,
-            'Crypto_Basket': (0.65 * raw_btc) + (0.35 * raw_eth),
-            'VIX_Vol_Shock': vix_shock,
-            'Real_Yield_Pressure': real_yield_shock,
-            'DXY_Dollar_Strength': dxy_pressure,
-            'Credit_Spread_Risk': credit_risk,
-            'Banking_Liquidity': banking_stress,
-            'Curve_Term_Premium': curve_slope,
-            'Global_Growth_Pulse': growth_pulse,
-            'Fed_2Y_Yield_Pressure': fed_2y_yield,
-            'Bond_10Y_Yield': bonds_10y_yield,
-            'Tech_Rotation_Spread': tech_spread,
-            'Carry_Trade_JPY': jpy_carry,
-            'Gold_Oil_Pulse': gold_oil_pulse,
-            'Silver_Gold_Beta': metals_beta,
-            'ETH_BTC_Beta': crypto_beta
-        }
-
-        # MAKRO REJİM BELİRLEME
-        if vix_shock > 1.1 or (credit_risk < -0.9 and vix_shock > 0.5):
-            regime = {
-                'name': "⚡ KURUMSAL DE-GROSSING & VOLATİLİTE ŞOKU (VaR Shock)",
-                'css': "regime-voldisruption",
-                'desc': "Opsiyon piyasasında ani hedge talebi; fonlar hisse ve riskli varlıklarda kaldıraç indiriyor."
+        if dxy < -0.5 and (carry < -0.8 or yields > 0.8 or fed_pivot > 0.5 or copper < 0.3 or funding_stress < -0.8):
+            return {
+                'name': "⚠️ KARIŞIK LİKİDİTE KONSOLİDASYONU (Dolar Gevşemesi vs. Fonlama/Faiz Stresi)",
+                'css': "regime-mixed",
+                'desc': "Zayıf Dolar taban sağlıyor ancak faiz ve bankalararası fonlama stresi baskı yaratıyor. Yönsüz denge."
             }
-        elif growth_pulse > 0.5 and common_equity_market > 0 and real_yield_shock < 0.8:
-            regime = {
-                'name': "🚀 MAKRO REFLASYON (Sanayi Emtiası ve Büyüme Rallisi)",
+        elif copper > 0.6 and carry > -0.2 and spx > 0:
+            return {
+                'name': "🚀 HAKİKİ REFLASYON (Güçlü Büyüme & Sanayi Emtiası Liderliği)",
                 'css': "regime-reflation",
-                'desc': "Bakır/Altın rasyosu ve sanayi hisseleri küresel genişlemeyi teyit ediyor."
+                'desc': "Bakır, Gümüş ve Sanayi hisseleri küresel büyümeyi teyitli şekilde fiyatlıyor."
             }
-        elif common_equity_market > 0.3 and dxy_pressure < 0 and vix_shock < 0.2:
-            regime = {
-                'name': "☀️ GOLDILOCKS (Düşük Oynaklık & Düzenli Risk İştahı)",
+        elif spx > 0.3 and dxy < 0.2 and yields < 0.5 and carry > -0.2:
+            return {
+                'name': "☀️ GENİŞ TABANLI BOĞA RALLİSİ (Goldilocks)",
                 'css': "regime-goldilocks",
-                'desc': "Dolar sakin, kredi spreadleri risksiz, faiz stresi yok. Geniş tabanlı kurumsal alım."
+                'desc': "Fonlama stresi yok, Dolar zayıf, faiz baskısı kalktı. Tüm varlıklar güçlü alıcılı."
             }
-        elif real_yield_shock > 0.8 and common_equity_market <= 0:
-            regime = {
-                'name': "🌋 REEL FAİZ SIKIŞMASI & STAGFLASYONİST BASKI",
+        elif yields > 1.0 and fed_pivot > 0.8 and spx <= 0:
+            return {
+                'name': "🌋 STAGFLASYON & FED ŞAHİN SIKIŞMASI",
                 'css': "regime-stagflation",
-                'desc': "Reel getirilerdeki yükseliş değerleme çarpanlarını eziyor; defansif rotasyon."
+                'desc': "Yükselen faizler değerlemeleri eziyor. Güvenli liman arayışı."
             }
-        elif common_equity_market < -0.5 and credit_risk < -0.8:
-            regime = {
-                'name': "❄️ DEFLASYONİST ÇÖKÜŞ & RESESYON FİYATLAMASI",
+        elif spx < -0.5 and (credit < -0.8 or funding_stress < -1.0):
+            return {
+                'name': "❄️ DEFLASYONİST ÇÖKÜŞ & FONLAMA KRİZİ",
                 'css': "regime-deflation",
                 'desc': "Kredi piyasasında stres tırmanıyor; likidite güvenli liman tahvillere ve nakde sığınıyor."
             }
         else:
-            regime = {
-                'name': "⚪ DENGELİ KONSOLİDASYON (Nötr Seans Geçişi)",
+            return {
+                'name': "⚪ DENGELİ GÜNLÜK GEÇİŞ REJİMİ (Konsolidasyon)",
                 'css': "regime-neutral",
-                'desc': "Makro güçler birbirini nötrlüyor. Net bir kırılım öncesi yönsüz akış."
+                'desc': "Piyasa ana bir kırılım öncesinde dengeli ve yönsüz konsolide oluyor."
             }
 
-        # HESAPLAMA MOTORU
-        def evaluate_matrix(matrix):
-            total_w = sum(abs(v) for v in matrix.values()) + 1e-6
-            norm_w = {k: (v / total_w) * 100.0 for k, v in matrix.items()}
-            
-            breakdown = []
-            net_sum = 0.0
+    def compute_all_asset_scores(self, df):
+        scores = {}
+        
+        # 1. HAM İVMELER
+        raw_spx = self.calculate_predictive_kinematics(df['SPX'])
+        raw_nq  = self.calculate_predictive_kinematics(df['NQ'])
+        raw_xau = self.calculate_predictive_kinematics(df['XAU'])
+        raw_xag = self.calculate_predictive_kinematics(df['XAG'])
 
-            for k, w in norm_w.items():
-                val = factors.get(k, 0.0)
+        raw_btc = self.calculate_predictive_kinematics(df['BTC'])
+        raw_eth = self.calculate_predictive_kinematics(df['ETH']) if 'ETH' in df else raw_btc
+        crypto_composite_mom = (0.65 * raw_btc) + (0.35 * raw_eth)
+
+        # SPX ve NQ ARASINDAKİ YAPAY AYRIŞMAYI ÖNLEYEN ÇAPA:
+        # İki endeks aynı yöne giderken birinin Boğa diğerinin Ayı çıkmasını engelleyen ana piyasa faktörü
+        equity_common = (0.50 * raw_spx) + (0.50 * raw_nq)
+        spx_mom = (0.70 * equity_common) + (0.30 * raw_spx)
+        nq_mom  = (0.70 * equity_common) + (0.30 * raw_nq)
+
+        metals_common = (0.50 * raw_xau) + (0.50 * raw_xag)
+        xau_mom = (0.70 * metals_common) + (0.30 * raw_xau)
+        xag_mom = (0.70 * metals_common) + (0.30 * raw_xag)
+
+        btc_macro = raw_btc
+        jpy_macro = self.calculate_predictive_kinematics(df['JPY'])
+        dxy_macro = -self.calculate_predictive_kinematics(df['EUR'])
+        
+        fed_pivot_pressure = -self.calculate_predictive_kinematics(df['BONDS_2Y'])
+        yield_macro = -self.calculate_predictive_kinematics(df['BONDS_10Y'])
+        
+        credit_risk = self.calculate_ratio_predictive(df['HYG'], df['LQD'])
+        funding_stress = self.calculate_ratio_predictive(df['KRE'], df['XLF'])
+        
+        curve_slope = self.calculate_ratio_predictive(df['BONDS_10Y'], df['BONDS_30Y'])
+        copper_gold = self.calculate_ratio_predictive(df['COPPER'], df['XAU'])
+        gold_oil = self.calculate_ratio_predictive(df['XAU'], df['OIL'])
+        slv_gld = self.calculate_ratio_predictive(df['XAG'], df['XAU'])
+        xme_gld = self.calculate_ratio_predictive(df['XME'], df['XAU'])
+        sector_rot = self.calculate_ratio_predictive(df['XLK'], df['XLF'])
+        eth_btc_beta = self.calculate_ratio_predictive(df['ETH'], df['BTC'])
+
+        factors_pool = {
+            'SPX_Mom': spx_mom, 'NQ_Mom': nq_mom, 'XAU_Mom': xau_mom, 'XAG_Mom': xag_mom,
+            'Crypto_Mom': crypto_composite_mom, 'ETH_BTC_Beta': eth_btc_beta,
+            'Fed_Pivot_Pressure': fed_pivot_pressure, 'Bond_Yield_Pressure': yield_macro,
+            'DXY_Pressure': dxy_macro, 'Yield_Curve_Slope': curve_slope,
+            'Credit_Risk_Spread': credit_risk, 'Funding_Liquidity_Stress': funding_stress,
+            'Sector_Rotation': sector_rot, 'Copper_Gold': copper_gold,
+            'Gold_Oil': gold_oil, 'SLV_GLD_Beta': slv_gld,
+            'XME_GLD_Ratio': xme_gld, 'BTC_Liquidity': btc_macro, 'Carry_Trade': jpy_macro
+        }
+
+        regime_info = self.detect_rigorous_macro_regime(factors_pool)
+
+        # HESAPLAMA MOTORU (Fiyat Momentum Ağırlığı Güçlendirildi)
+        def build_predictive_result(base_weights, factors_dict):
+            multipliers = {}
+            for k, w in base_weights.items():
+                val = abs(factors_dict.get(k, 0.0))
+                multipliers[k] = abs(w) * (1.0 + (min(val, 2.0) ** 0.8))
+            
+            total_att = sum(multipliers.values()) + 1e-6
+            dyn_weights = {}
+            for k, w in base_weights.items():
+                sign = 1.0 if w >= 0 else -1.0
+                raw_norm = (multipliers[k] / total_att) * 100.0
+                
+                # Fiyat İvmesi Çapası: Grafiğin ana yönünün ezilmesini önlemek için %30-%35'e çekildi
+                if '_Mom' in k:
+                    raw_norm = max(min(raw_norm, 35.0), 30.0)
+                else:
+                    raw_norm = min(raw_norm, 12.0)
+                    
+                dyn_weights[k] = raw_norm * sign
+
+            total_actual = sum(abs(v) for v in dyn_weights.values()) + 1e-6
+            for k in dyn_weights:
+                dyn_weights[k] = (dyn_weights[k] / total_actual) * 100.0
+
+            breakdown = []
+            for k, w in dyn_weights.items():
+                val = factors_dict.get(k, 0.0)
                 contribution = val * (w / 100.0)
-                net_sum += contribution
                 breakdown.append({
-                    'Makro Gösterge (Faktör)': k,
-                    'Standart İvme (Z)': round(val, 2),
-                    'Ağırlık (%)': round(w, 1),
+                    'Katman (Öncü Faktör)': k,
+                    'Öngörüsel İvme (Kinematics)': round(val, 2),
+                    'Dinamik Ağırlık (%)': round(w, 1),
                     'Net Katkı': round(contribution, 3)
                 })
 
-            table = pd.DataFrame(breakdown).sort_values('Net Katkı', ascending=False)
-            final_score = np.tanh(net_sum / 1.10) * 100
+            breakdown_df = pd.DataFrame(breakdown).sort_values('Net Katkı', ascending=False)
+            total_score = sum(factors_dict.get(k, 0.0) * (dyn_weights[k] / 100.0) for k in dyn_weights)
+            final_score = np.tanh(total_score / 1.25) * 100
 
-            # Karar Sinyali
             if final_score > 15:
-                msg = "🟢 GÜÇLÜ ALICI SEANS (Trend Yönü: LONG)"
+                msg = "🚀 GÜÇLÜ BOĞA TRENDİ (4H Pozisyon Yönü: ALIM)"
                 css = "div-bull"
             elif final_score < -15:
-                msg = "🔴 GÜÇLÜ SATICI SEANS (Trend Yönü: SHORT)"
+                msg = "🩸 GÜÇLÜ AYI BASKISI (4H Pozisyon Yönü: SATIŞ)"
                 css = "div-bear"
             else:
-                msg = "⚪ DENGELİ DAĞILIM (Yönsüz / Bekle-Gör)"
+                msg = "⚪ DENGELİ KONSOLİDASYON (Piyasa Yönsüz / Bekle)"
                 css = "div-neutral"
 
-            top_p = table.iloc[0] if not table.empty else None
-            top_n = table.iloc[-1] if not table.empty else None
-            pos_t = f"{top_p['Makro Gösterge (Faktör)']} (+{top_p['Net Katkı']:.2f})" if top_p is not None and top_p['Net Katkı'] > 0 else "Pozitif baskı yok"
-            neg_t = f"{top_n['Makro Gösterge (Faktör)']} ({top_n['Net Katkı']:.2f})" if top_n is not None and top_n['Net Katkı'] < 0 else "Negatif baskı yok"
+            top_positive = breakdown_df.iloc[0] if not breakdown_df.empty else None
+            top_negative = breakdown_df.iloc[-1] if not breakdown_df.empty else None
+
+            pos_desc = f"{top_positive['Katman (Öncü Faktör)']} (+{top_positive['Net Katkı']:.3f})" if top_positive is not None and top_positive['Net Katkı'] > 0 else "Belirgin pozitif itiş yok"
+            neg_desc = f"{top_negative['Katman (Öncü Faktör)']} ({top_negative['Net Katkı']:.3f})" if top_negative is not None and top_negative['Net Katkı'] < 0 else "Belirgin negatif baskı yok"
 
             if final_score > 15:
-                diag = f"Piyasa alıcılı. Lokomotif faktör: {pos_t}. En büyük sürtünme: {neg_t}."
-                act = "LONG POZİSYON KORUNABİLİR: Trend desteği kuvvetli, momentum takip edilmeli."
-                badge = "action-badge"
+                structure = f"Öngörüsel alıcılar üstün. En büyük itiş: {pos_desc}. Ana fren: {neg_desc}."
+                action = "🚀 TRENDİ SÜR: 4H Alım yönlü pozisyonlar taşınabilir. Direnç kırılımlarını izle."
+                badge_cls = "action-badge"
             elif final_score < -15:
-                diag = f"Piyasa satıcılı. Başlıca tetikleyici: {neg_t}. Karşı destek: {pos_t}."
-                act = "SATIŞ YÖNLÜ / DEFANSİF: Destek kırılımları izlenmeli, risk marjı daraltılmalı."
-                badge = "action-badge-bear"
+                structure = f"Öngörüsel satıcılar üstün. En büyük baskı: {neg_desc}. Karşı itiş: {pos_desc}."
+                action = "🩸 SATIŞ BASKISI DEVAM: 4H Satış yönlü pozisyonlar korunabilir. Destek kırılımlarını izle."
+                badge_cls = "action-badge-bear"
             else:
-                diag = f"Denge hali. Pozitif itiş ({pos_t}) ile frenleyici itiş ({neg_t}) birbirini sıfırlıyor."
-                act = "YÖN ARAMA / BEKLE: ±15 puan kırılımı teyit edilmeden pozisyona girilmemeli."
-                badge = "action-badge-neutral"
+                structure = f"Gelecek beklentileri dengede. İtici güç: {pos_desc} vs Frenleyici güç: {neg_desc} birbirini dengeliyor."
+                action = "🛑 NAKİTTE BEKLE: Net kırılım (+15 üstü veya -15 altı) gelene kadar yeni pozisyon açma."
+                badge_cls = "action-badge-neutral"
 
-            return {
-                'score': final_score,
-                'table': table,
-                'msg': msg,
-                'css': css,
-                'commentary': {'structure': diag, 'action': act, 'badge_cls': badge}
-            }
+            return {'score': final_score, 'table': breakdown_df, 'msg': msg, 'css': css, 'commentary': {'structure': structure, 'action': action, 'badge_cls': badge_cls}}
 
-        scores = {}
+        # MATRİSLER (Aşırı Cezalandırmalar Dengelendi)
+        spx_base = {
+            'SPX_Mom': 35.0, 'Funding_Liquidity_Stress': 12.0, 'Credit_Risk_Spread': 12.0,
+            'Fed_Pivot_Pressure': -10.0, 'Bond_Yield_Pressure': -8.0, 'DXY_Pressure': -8.0,
+            'Sector_Rotation': 8.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0, 'Copper_Gold': 5.0
+        }
+        scores['SPX'] = build_predictive_result(spx_base, factors_pool)
 
-        # S&P 500 Matrisi (Ortak Piyasa Betası %45 ile kilitli)
-        scores['SPX'] = evaluate_matrix({
-            'Equity_Market_Beta': 45.0,
-            'SPX_Idiosyncratic': 15.0,
-            'Credit_Spread_Risk': 15.0,
-            'Banking_Liquidity': 10.0,
-            'VIX_Vol_Shock': -15.0,
-            'Real_Yield_Pressure': -10.0,
-            'DXY_Dollar_Strength': -10.0,
-            'Global_Growth_Pulse': 5.0
-        })
+        # NASDAQ Matrisi: SPX ile yapay ayrışmayı önlemek için faiz cezası dengelendi
+        nq_base = {
+            'NQ_Mom': 35.0, 'Sector_Rotation': 12.0, 'Fed_Pivot_Pressure': -12.0,
+            'Bond_Yield_Pressure': -10.0, 'Funding_Liquidity_Stress': 8.0, 'Credit_Risk_Spread': 8.0,
+            'DXY_Pressure': -8.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0, 'Copper_Gold': 5.0
+        }
+        scores['NQ'] = build_predictive_result(nq_base, factors_pool)
 
-        # NASDAQ 100 Matrisi (Ortak Piyasa Betası %45 ile kilitli; faiz ve tech esnekliği %15-20)
-        scores['NQ'] = evaluate_matrix({
-            'Equity_Market_Beta': 45.0,
-            'NQ_Idiosyncratic': 15.0,
-            'Tech_Rotation_Spread': 15.0,
-            'Real_Yield_Pressure': -15.0,
-            'VIX_Vol_Shock': -15.0,
-            'Fed_2Y_Yield_Pressure': -10.0,
-            'Credit_Spread_Risk': 10.0,
-            'DXY_Dollar_Strength': -5.0
-        })
+        xau_base = {
+            'XAU_Mom': 35.0, 'Yield_Curve_Slope': 15.0, 'Fed_Pivot_Pressure': -12.0,
+            'DXY_Pressure': -15.0, 'Bond_Yield_Pressure': -8.0, 'Funding_Liquidity_Stress': -8.0,
+            'Gold_Oil': 5.0, 'SLV_GLD_Beta': 5.0, 'Carry_Trade': 5.0, 'Copper_Gold': -3.0
+        }
+        scores['XAU'] = build_predictive_result(xau_base, factors_pool)
 
-        # ALTIN
-        scores['XAU'] = evaluate_matrix({
-            'XAU_Momentum': 35.0,
-            'Real_Yield_Pressure': -25.0,
-            'DXY_Dollar_Strength': -20.0,
-            'VIX_Vol_Shock': 10.0,
-            'Gold_Oil_Pulse': 10.0,
-            'Curve_Term_Premium': -10.0
-        })
+        xag_base = {
+            'XAG_Mom': 35.0, 'Copper_Gold': 15.0, 'Fed_Pivot_Pressure': -12.0,
+            'XME_GLD_Ratio': 10.0, 'SLV_GLD_Beta': 10.0, 'DXY_Pressure': -10.0,
+            'Yield_Curve_Slope': 5.0, 'Bond_Yield_Pressure': -5.0, 'BTC_Liquidity': 5.0, 'Gold_Oil': 5.0
+        }
+        scores['XAG'] = build_predictive_result(xag_base, factors_pool)
 
-        # GÜMÜŞ
-        scores['XAG'] = evaluate_matrix({
-            'XAG_Momentum': 35.0,
-            'Global_Growth_Pulse': 20.0,
-            'Silver_Gold_Beta': 15.0,
-            'Real_Yield_Pressure': -15.0,
-            'DXY_Dollar_Strength': -15.0,
-            'VIX_Vol_Shock': -10.0
-        })
+        crypto_base = {
+            'Crypto_Mom': 35.0, 'Fed_Pivot_Pressure': -15.0, 'Sector_Rotation': 10.0,
+            'ETH_BTC_Beta': 10.0, 'DXY_Pressure': -10.0, 'Funding_Liquidity_Stress': 8.0,
+            'Credit_Risk_Spread': 5.0, 'Carry_Trade': 5.0, 'Copper_Gold': 5.0, 'Bond_Yield_Pressure': -5.0
+        }
+        scores['CRYPTO'] = build_predictive_result(crypto_base, factors_pool)
 
-        # KRİPTO
-        scores['CRYPTO'] = evaluate_matrix({
-            'Crypto_Basket': 35.0,
-            'Equity_Market_Beta': 20.0,
-            'ETH_BTC_Beta': 15.0,
-            'VIX_Vol_Shock': -15.0,
-            'DXY_Dollar_Strength': -15.0,
-            'Banking_Liquidity': 10.0
-        })
-
-        return scores, regime, len(df.columns)
+        return scores, regime_info
 
 # ==========================================
-# 3. GÖRSELLEŞTİRME VE EKRAN ÇIKTISI
+# 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = ResilientMacroEngine()
+engine = PredictiveKinematicEngine()
 
-st.title("🏛️ TIER-1 RESILIENT DESK TERMINAL (v170.0)")
-st.markdown('<span class="status-badge">ZERO-DROP DATA MATRIX & COMMON EQUITY FACTOR ARCHITECTURE</span>', unsafe_allow_html=True)
+st.title("🏛️ TIER-1 PREDICTIVE TERMINAL (v180.0)")
+st.markdown('<span class="threshold-badge">🔮 RESILIENT KINEMATICS & BALANCED FACTOR ENGINE</span>', unsafe_allow_html=True)
 
 try:
-    df_grid = engine.fetch_resilient_grid()
-
-    if df_grid.empty or len(df_grid) < 16:
-        st.warning("Piyasa verileri senkronize ediliyor, lütfen sayfayı yenilemeden birkaç saniye bekleyin...")
+    df_grid = engine.fetch_synchronized_grid()
+    
+    if df_grid.empty or len(df_grid) < 8:
+        st.warning("Veriler senkronize ediliyor, lütfen birkaç saniye bekleyin...")
     else:
-        results, regime_info, total_active_factors = engine.compute_all_indicators(df_grid)
+        results, regime_info = engine.compute_all_asset_scores(df_grid)
 
-        col_top1, col_top2 = st.columns([3, 1])
-        with col_top1:
-            st.markdown(f"""
-            <div class="regime-box {regime_info['css']}">
-                MAKRO LİKİDİTE REJİMİ: {regime_info['name']}<br>
-                <span style="font-size:11px; font-weight:normal; opacity:0.85;">{regime_info['desc']}</span>
-            </div>
-            """, unsafe_allow_html=True)
-        with col_top2:
-            st.markdown(f"""
-            <div style="background-color: #0F172A; border:1px solid #1E293B; padding:12px; border-radius:4px; text-align:center;">
-                <span style="font-size:11px; color:#94A3B8;">Aktif Gösterge Akışı</span><br>
-                <span style="font-size:18px; font-weight:bold; color:#38BDF8;">{total_active_factors} / 20 Enstrüman</span><br>
-                <span class="health-badge">VERİ AKIŞI KESİNTİSİZ</span>
-            </div>
-            """, unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="regime-box {regime_info['css']}">
+            Mevcut Küresel Makro Rejim: {regime_info['name']}<br>
+            <span style="font-size:11px; font-weight:normal; opacity:0.85;">{regime_info['desc']}</span>
+        </div>
+        """, unsafe_allow_html=True)
 
-        tabs = st.tabs(["S&P 500 (ES)", "NASDAQ (NQ)", "ALTIN (XAU)", "GÜMÜŞ (XAG)", "KRİPTO (BTC+ETH)"])
-        asset_keys = [("SPX", "S&P 500 Vadeli"), ("NQ", "Nasdaq 100 Vadeli"), 
-                      ("XAU", "Ons Altın"), ("XAG", "Ons Gümüş"), ("CRYPTO", "Kripto Likidite")]
+        tab_spx, tab_nq, tab_xau, tab_xag, tab_crypto = st.tabs([
+            "S&P 500 (ES=F)", 
+            "NASDAQ (NQ=F)", 
+            "ALTIN (GC=F)", 
+            "GÜMÜŞ (SI=F)", 
+            "KRİPTO (BTC+ETH)"
+        ])
 
-        for tab, (key, title) in zip(tabs, asset_keys):
-            res = results.get(key)
-            with tab:
-                c1, c2 = st.columns([1, 2])
-                with c1:
-                    st.markdown(f"### {title}")
-                    score = res['score']
-                    c = "#10B981" if score > 15 else ("#EF4444" if score < -15 else "#94A3B8")
-                    
-                    st.markdown(f"<h1 style='color: {c}; font-size: 52px; margin:0;'>{score:.1f}</h1>", unsafe_allow_html=True)
-                    st.markdown(f'<div class="{res["css"]}">{res["msg"]}</div>', unsafe_allow_html=True)
-                    
-                    st.markdown(f"""
-                    <div class="commentary-card">
-                        <div class="commentary-header">🔍 Kurumsal Makro Teşhisi:</div>
-                        <div>{res['commentary']['structure']}</div>
-                        <div class="{res['commentary']['badge_cls']}">🎯 Strateji: {res['commentary']['action']}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+        def render_view(res, asset_title):
+            score = res['score']
+            table = res['table']
+            div_msg = res['msg']
+            div_class = res['css']
+            commentary = res['commentary']
 
-                with c2:
-                    table = res['table']
-                    if not table.empty:
-                        fig = go.Figure(go.Bar(
-                            x=table['Net Katkı'], y=table['Makro Gösterge (Faktör)'], orientation='h',
-                            marker_color=np.where(table['Net Katkı'] > 0, '#10B981', '#EF4444')
-                        ))
-                        fig.update_layout(
-                            margin=dict(l=0, r=0, t=10, b=0), height=270,
-                            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                            font=dict(color='#94A3B8', size=10),
-                            xaxis=dict(gridcolor='#1E293B'), yaxis=dict(gridcolor='#1E293B')
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
+            col1, col2 = st.columns([1, 2])
+            with col1:
+                st.markdown(f"### {asset_title} 4H Rotası")
+                c = "#00E676" if score > 15 else ("#FF1744" if score < -15 else "#ECEFF1")
 
-                st.markdown("##### 📊 Faktör Katkı ve Dağılım Matrisi")
-                st.dataframe(res['table'], use_container_width=True, hide_index=True)
+                st.markdown(f"<h1 style='color: {c}; font-size: 55px; margin:0;'>{score:.1f}</h1>", unsafe_allow_html=True)
+                st.markdown(f'<div class="{div_class}">{div_msg}</div>', unsafe_allow_html=True)
+                
+                st.markdown(f"""
+                <div class="commentary-card">
+                    <div class="commentary-header">📊 Öngörüsel Teşhis:</div>
+                    <div>{commentary['structure']}</div>
+                    <div class="{commentary['badge_cls']}">🎯 Aksiyon: {commentary['action']}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with col2:
+                if not table.empty:
+                    fig = go.Figure(go.Bar(
+                        x=table['Net Katkı'], y=table['Katman (Öncü Faktör)'], orientation='h',
+                        marker_color=np.where(table['Net Katkı'] > 0, '#00E676', '#FF1744')
+                    ))
+                    fig.update_layout(
+                        margin=dict(l=0, r=0, t=10, b=0), height=280, 
+                        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
+                        font=dict(color='#CFD8DC', size=10),
+                        xaxis=dict(gridcolor='#1E293B'), yaxis=dict(gridcolor='#1E293B')
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+
+            st.dataframe(table, use_container_width=True, hide_index=True)
+
+        with tab_spx: render_view(results.get('SPX'), "S&P 500 (ES=F)")
+        with tab_nq: render_view(results.get('NQ'), "NASDAQ (NQ=F)")
+        with tab_xau: render_view(results.get('XAU'), "ALTIN (GC=F)")
+        with tab_xag: render_view(results.get('XAG'), "GÜMÜŞ (SI=F)")
+        with tab_crypto: render_view(results.get('CRYPTO'), "KRİPTO (BTC+ETH)")
 
 except Exception as e:
     st.error(f"Sistem Hatası: {str(e)}")
