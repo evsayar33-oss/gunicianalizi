@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v120.1)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v130.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -22,6 +22,7 @@ st.markdown("""
     .regime-reflation { background-color: #332200; color: #FFD600; border-color: #FFD600; }
     .regime-stagflation { background-color: #33001a; color: #FF4081; border-color: #FF4081; }
     .regime-deflation { background-color: #330000; color: #FF1744; border-color: #FF1744; }
+    .regime-mixed { background-color: #262000; color: #FFB300; border-color: #FFB300; }
     .regime-neutral { background-color: #263238; color: #ECEFF1; border-color: #78909C; }
     .div-bull { background-color: #004D40; color: #00E676; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #00E676; font-size: 13px; display: inline-block; margin-top: 5px; }
     .div-bear { background-color: #4A148C; color: #FF1744; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #FF1744; font-size: 13px; display: inline-block; margin-top: 5px; }
@@ -36,12 +37,12 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # 1 dakikada bir otomatik yenile
-count = st_autorefresh(interval=60000, limit=None, key="macro_1201_refresh")
+count = st_autorefresh(interval=60000, limit=None, key="macro_1300_refresh")
 
 # ==========================================
-# 2. AKTİF BANT QUANT MAKRO MOTORU (v120.1)
+# 2. DENETLENMİŞ QUANT MAKRO MOTORU (v130.0)
 # ==========================================
-class ActiveTapeMacroEngine:
+class AuditedMacroEngine:
     def __init__(self):
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
@@ -100,7 +101,6 @@ class ActiveTapeMacroEngine:
         return df
 
     def calculate_active_tape_momentum(self, s):
-        """Hareketsiz düz barları süzer, doğrudan son aktif canlı seans barlarından ivme hesaplar."""
         if s is None or s.empty:
             return 0.0
         
@@ -136,10 +136,69 @@ class ActiveTapeMacroEngine:
         ratio = s1.loc[common_idx] / (s2.loc[common_idx] + 1e-6)
         return self.calculate_active_tape_momentum(ratio)
 
+    def detect_rigorous_macro_regime(self, factors):
+        """
+        KUSURSUZ DENETLENMİŞ REJİM MOTORU:
+        Carry trade çöküyorsa veya Bakır zayıfsa asla sahte Reflasyon/Boğa basamaz!
+        """
+        carry = factors['Carry_Trade']
+        copper = factors['Copper_Gold']
+        dxy = factors['DXY_Pressure']
+        yields = factors['Bond_Yield_Pressure']
+        fed_pivot = factors['Fed_Pivot_Pressure']
+        credit = factors['Credit_Risk_Spread']
+        spx = factors['SPX_Mom']
+
+        # 1. KARIŞIK LİKİDİTE KONSOLİDASYONU (Şu anki gerçek durum)
+        if dxy < -0.5 and (carry < -0.8 or yields > 0.8 or fed_pivot > 0.5 or copper < 0.3):
+            return {
+                'name': "⚠️ KARIŞIK LİKİDİTE KONSOLİDASYONU (Dolar Gevşemesi vs. Faiz/Carry Stresi)",
+                'css': "regime-mixed",
+                'desc': "Zayıf Dolar hisselere taban sağlıyor ancak yükselen faizler ve çözülen Carry Trade baskı yaratıyor. Yönsüz denge."
+            }
+
+        # 2. HAKİKİ REFLASYON (Carry güçlü, Bakır güçlü, Büyüme teyitli)
+        elif copper > 0.8 and carry > 0.0 and factors['Gold_Oil'] > 0 and spx > 0:
+            return {
+                'name': "🚀 HAKİKİ REFLASYON (Güçlü Büyüme & Sanayi Emtiası Liderliği)",
+                'css': "regime-reflation",
+                'desc': "Bakır, Gümüş ve Sanayi hisseleri küresel büyümeyi teyitli şekilde fiyatlıyor."
+            }
+
+        # 3. GENİŞ TABANLI BOĞA (Goldilocks)
+        elif spx > 0.5 and dxy < 0 and yields < 0.3 and fed_pivot < 0.3 and carry > 0:
+            return {
+                'name': "☀️ GENİŞ TABANLI BOĞA RALLİSİ (Goldilocks)",
+                'css': "regime-goldilocks",
+                'desc': "Faiz baskısı yok, Dolar zayıf, fonlama canlı. Tüm varlıklar güçlü alıcılı."
+            }
+
+        # 4. STAGFLASYON & FAİZ BASKISI
+        elif yields > 1.0 and fed_pivot > 0.8 and spx <= 0:
+            return {
+                'name': "🌋 STAGFLASYON & FED ŞAHİN SIKIŞMASI",
+                'css': "regime-stagflation",
+                'desc': "Yükselen faizler değerlemeleri eziyor. Güvenli liman arayışı."
+            }
+
+        # 5. DEFLASYONİST ÇÖKÜŞ
+        elif spx < -0.5 and credit < -0.8:
+            return {
+                'name': "❄️ DEFLASYONİST ÇÖKÜŞ & KREDİ KRİZİ",
+                'css': "regime-deflation",
+                'desc': "Tüm riskli varlıklardan nakde kaçış."
+            }
+
+        else:
+            return {
+                'name': "⚪ DENGELİ GÜNLÜK GEÇİŞ REJİMİ (Konsolidasyon)",
+                'css': "regime-neutral",
+                'desc': "Piyasa ana bir kırılım öncesinde dengeli ve yönsüz konsolide oluyor."
+            }
+
     def compute_all_asset_scores(self, df):
         scores = {}
         
-        # 1. TÜM GÖSTERGELERİN AKTİF İVMELERİ
         raw_spx = self.calculate_active_tape_momentum(df['SPX'])
         raw_nq  = self.calculate_active_tape_momentum(df['NQ'])
         raw_xau = self.calculate_active_tape_momentum(df['XAU'])
@@ -174,7 +233,6 @@ class ActiveTapeMacroEngine:
         sector_rot = self.calculate_ratio_active_momentum(df['XLK'], df['XLF'])
         eth_btc_beta = self.calculate_ratio_active_momentum(df['ETH'], df['BTC'])
 
-        # TÜM FAKTÖRLERİN MERKEZİ HAVUZU
         factors_pool = {
             'SPX_Mom': spx_mom, 'NQ_Mom': nq_mom, 'XAU_Mom': xau_mom, 'XAG_Mom': xag_mom,
             'Crypto_Mom': crypto_composite_mom, 'ETH_BTC_Beta': eth_btc_beta,
@@ -186,23 +244,11 @@ class ActiveTapeMacroEngine:
             'XME_GLD_Ratio': xme_gld, 'BTC_Liquidity': btc_macro, 'Carry_Trade': jpy_macro
         }
 
-        # REJİM MOTORU
-        growth_raw = (0.4 * credit_risk) + (0.3 * copper_gold) + (0.3 * equity_common)
-        tightness_raw = (0.4 * fed_pivot_pressure) + (0.3 * yield_macro) + (0.3 * dxy_macro)
+        # REJİM KONSENSÜSÜ
+        regime_info = self.detect_rigorous_macro_regime(factors_pool)
 
-        if growth_raw > 0.3 and tightness_raw <= 0.0:
-            regime_info = {'name': "☀️ GOLDILOCKS & FED LİKİDİTE GENİŞLEMESİ", 'css': "regime-goldilocks", 'desc': "Fed faiz baskısı kalktı, Dolar sakin. Hisse senetleri ve teknoloji için ideal ralli ortamı."}
-        elif growth_raw > 0.3 and tightness_raw > 0.3:
-            regime_info = {'name': "🚀 REFLASYON (Güçlü Büyüme & Emtia Patlaması)", 'css': "regime-reflation", 'desc': "Gümüş, Bakır ve Sanayi hisseleri küresel büyümeyi fiyatlıyor."}
-        elif growth_raw <= 0.3 and tightness_raw > 0.3:
-            regime_info = {'name': "🌋 STAGFLASYON & FED ŞAHİN SIKIŞMASI", 'css': "regime-stagflation", 'desc': "Faizler yüksek, Fed baskısı hisseleri ve değerlemeleri eziyor."}
-        elif growth_raw < -0.4 and tightness_raw <= 0.0:
-            regime_info = {'name': "❄️ DEFLASYON / RESESYON KRİZİ", 'css': "regime-deflation", 'desc': "Büyüme çöküşte, nakit ve devlet tahvilleri sığınak."}
-        else:
-            regime_info = {'name': "⚪ DENGELİ GEÇİŞ REJİMİ (Konsolidasyon)", 'css': "regime-neutral", 'desc': "Piyasa Fed beklentileri öncesinde dengeli konsolide oluyor."}
-
-        # DENGELENMİŞ HESAPLAMA MOTORU
-        def build_active_tape_result(base_weights, factors_dict):
+        # HESAPLAMA MOTORU
+        def build_audited_result(base_weights, factors_dict):
             multipliers = {}
             for k, w in base_weights.items():
                 val = abs(factors_dict.get(k, 0.0))
@@ -214,7 +260,6 @@ class ActiveTapeMacroEngine:
                 sign = 1.0 if w >= 0 else -1.0
                 raw_norm = (multipliers[k] / total_att) * 100.0
                 
-                # Fiyat İvmesi %20-%25 Arasında Dengelenir
                 if '_Mom' in k:
                     raw_norm = max(min(raw_norm, 25.0), 20.0)
                 else:
@@ -237,10 +282,11 @@ class ActiveTapeMacroEngine:
                     'Net Katkı': round(contribution, 3)
                 })
 
-            breakdown_df = pd.DataFrame(breakdown).sort_values('Dinamik Ağırlık (%)', ascending=False)
+            breakdown_df = pd.DataFrame(breakdown).sort_values('Net Katkı', ascending=False)
             total_score = sum(factors_dict.get(k, 0.0) * (dyn_weights[k] / 100.0) for k in dyn_weights)
             final_score = np.tanh(total_score / 1.4) * 100
 
+            # GÜVEN EŞİĞİ (±15 Nötr Alanı)
             if final_score > 15:
                 msg = "🚀 GÜÇLÜ BOĞA TRENDİ (4H Pozisyon Yönü: ALIM)"
                 css = "div-bull"
@@ -251,76 +297,76 @@ class ActiveTapeMacroEngine:
                 msg = "⚪ DENGELİ KONSOLİDASYON (Piyasa Yönsüz / Bekle)"
                 css = "div-neutral"
 
+            # DİNAMİK OTOMATİK TEŞHİS (Tablonun En Büyük Güçlerini Doğrudan Okur)
+            top_positive = breakdown_df.iloc[0] if not breakdown_df.empty else None
+            top_negative = breakdown_df.iloc[-1] if not breakdown_df.empty else None
+
+            pos_desc = f"{top_positive['Katman (Öncü Faktör)']} (+{top_positive['Net Katkı']:.3f})" if top_positive is not None and top_positive['Net Katkı'] > 0 else "Belirgin pozitif itiş yok"
+            neg_desc = f"{top_negative['Katman (Öncü Faktör)']} ({top_negative['Net Katkı']:.3f})" if top_negative is not None and top_negative['Net Katkı'] < 0 else "Belirgin negatif baskı yok"
+
             if final_score > 15:
-                structure = "Küresel makro likidite ve son aktif seans alıcıları güçlü destekliyor."
+                structure = f"Makro alıcılar üstün. En büyük destekçi: {pos_desc}. Ana fren: {neg_desc}."
                 action = "🚀 TRENDİ SÜR: 4H Alım yönlü pozisyonlar güvenle taşınabilir. Direnç kırılımlarını takip et."
                 badge_cls = "action-badge"
             elif final_score < -15:
-                structure = "Yükselen faizler, Dolar baskısı ve makro fren piyasayı eziyor."
+                structure = f"Makro satıcılar üstün. En büyük baskı: {neg_desc}. Karşı itiş: {pos_desc}."
                 action = "🩸 SATIŞ BASKISI DEVAM: 4H Satış yönlü pozisyonlar korunabilir. Destek kırılımlarını izle."
                 badge_cls = "action-badge-bear"
             else:
-                structure = "Makro güçler dengede. Fiyat nötr konsolidasyon bandı içinde beklemede."
-                action = "🛑 NAKİTTE BEKLE: Net kırılım gelene kadar yeni pozisyon açma."
+                structure = f"Piyasa dengede. İtici güç: {pos_desc} vs Frenleyici güç: {neg_desc} birbirini dengeliyor."
+                action = "🛑 NAKİTTE BEKLE: Net kırılım (+15 üstü veya -15 altı) gelene kadar yeni pozisyon açma."
                 badge_cls = "action-badge-neutral"
 
             commentary = {'structure': structure, 'action': action, 'badge_cls': badge_cls}
 
             return {'score': final_score, 'table': breakdown_df, 'msg': msg, 'css': css, 'commentary': commentary}
 
-        # ----------------------------------------------------
-        # 5 VARLIK İÇİN HATASIZ ÇAĞRILAR (factors_pool BAĞLANDI)
-        # ----------------------------------------------------
-        # 1. GÜMÜŞ (SI=F)
+        # MATRİSLER
         xag_base = {
             'XAG_Mom': 25.0, 'Copper_Gold': 15.0, 'Fed_Pivot_Pressure': -15.0,
             'XME_GLD_Ratio': 10.0, 'SLV_GLD_Beta': 10.0, 'DXY_Pressure': -10.0,
             'Real_Yield_Shock': 5.0, 'Bond_Yield_Pressure': -5.0, 'BTC_Liquidity': 5.0, 'Gold_Oil': 5.0
         }
-        scores['XAG'] = build_active_tape_result(xag_base, factors_pool)
+        scores['XAG'] = build_audited_result(xag_base, factors_pool)
 
-        # 2. ALTIN (GC=F)
         xau_base = {
             'XAU_Mom': 25.0, 'Real_Yield_Shock': 20.0, 'Fed_Pivot_Pressure': -15.0,
             'DXY_Pressure': -15.0, 'Bond_Yield_Pressure': -10.0, 'Gold_Oil': 10.0,
             'SLV_GLD_Beta': 5.0, 'Carry_Trade': 5.0, 'Copper_Gold': -3.0, 'BTC_Liquidity': -2.0
         }
-        scores['XAU'] = build_active_tape_result(xau_base, factors_pool)
+        scores['XAU'] = build_audited_result(xau_base, factors_pool)
 
-        # 3. S&P 500 (ES=F)
         spx_base = {
             'SPX_Mom': 25.0, 'Fed_Pivot_Pressure': -15.0, 'Credit_Risk_Spread': 15.0,
             'Credit_Flight_Safety': 10.0, 'Bond_Yield_Pressure': -10.0, 'DXY_Pressure': -10.0,
             'Sector_Rotation': 10.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0, 'Copper_Gold': 5.0
         }
-        scores['SPX'] = build_active_tape_result(spx_base, factors_pool)
+        scores['SPX'] = build_audited_result(spx_base, factors_pool)
 
-        # 4. NASDAQ (NQ=F)
         nq_base = {
             'NQ_Mom': 25.0, 'Fed_Pivot_Pressure': -20.0, 'Sector_Rotation': 15.0,
             'Bond_Yield_Pressure': -15.0, 'Credit_Risk_Spread': 10.0, 'DXY_Pressure': -10.0,
             'Credit_Flight_Safety': 5.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0, 'Copper_Gold': 5.0
         }
-        scores['NQ'] = build_active_tape_result(nq_base, factors_pool)
+        scores['NQ'] = build_audited_result(nq_base, factors_pool)
 
-        # 5. KRİPTO (BTC+ETH)
         crypto_base = {
             'Crypto_Mom': 25.0, 'Fed_Pivot_Pressure': -20.0, 'Sector_Rotation': 10.0,
             'ETH_BTC_Beta': 10.0, 'DXY_Pressure': -10.0, 'Credit_Risk_Spread': 10.0,
             'Carry_Trade': 5.0, 'Copper_Gold': 5.0, 'Real_Yield_Shock': -5.0, 'Bond_Yield_Pressure': -5.0
         }
-        scores['CRYPTO'] = build_active_tape_result(crypto_base, factors_pool)
+        scores['CRYPTO'] = build_audited_result(crypto_base, factors_pool)
 
         return scores, regime_info
 
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = ActiveTapeMacroEngine()
+engine = AuditedMacroEngine()
 
-st.title("🏛️ TIER-1 MASTER TERMINAL (v120.1)")
-st.markdown('<span class="status-badge">⚡ ACTIVE TAPE & HOLIDAY-PROOF ENGINE</span>', unsafe_allow_html=True)
-st.caption("Tatil ve Kapalı Piyasa Düz Çizgi Süzgeci | Canlı Seans İvmesi")
+st.title("🏛️ TIER-1 MASTER TERMINAL (v130.0)")
+st.markdown('<span class="status-badge">🛡️ AUDITED RIGOROUS MACRO ENGINE</span>', unsafe_allow_html=True)
+st.caption("Matematiksel ve Mantıksal Çelişkilerden Arındırılmış Hakiki Makro Konsensüs Motoru")
 
 try:
     df_grid = engine.fetch_synchronized_grid()
@@ -330,7 +376,7 @@ try:
     else:
         results, regime_info = engine.compute_all_asset_scores(df_grid)
 
-        # HAKİKİ MAKRO REJİM BANDI
+        # HAKİKİ REJİM BANDI
         st.markdown(f"""
         <div class="regime-box {regime_info['css']}">
             Mevcut Küresel Makro Rejim: {regime_info['name']}<br>
@@ -357,21 +403,19 @@ try:
             with col1:
                 st.markdown(f"### {asset_title} 4H Rotası")
                 
-                # Nötr bölge [-15, +15] BEYAZ!
                 if score > 15:
-                    c = "#00E676"  # Yeşil (Boğa)
+                    c = "#00E676"
                 elif score < -15:
-                    c = "#FF1744"  # Kırmızı (Ayı)
+                    c = "#FF1744"
                 else:
-                    c = "#ECEFF1"  # Beyaz (Nötr)
+                    c = "#ECEFF1"
 
                 st.markdown(f"<h1 style='color: {c}; font-size: 55px; margin:0;'>{score:.1f}</h1>", unsafe_allow_html=True)
                 st.markdown(f'<div class="{div_class}">{div_msg}</div>', unsafe_allow_html=True)
                 
-                # Taktiksel Kart
                 st.markdown(f"""
                 <div class="commentary-card">
-                    <div class="commentary-header">📊 Portföy Masası Teşhisi:</div>
+                    <div class="commentary-header">📊 Denetlenmiş Teşhis:</div>
                     <div>{commentary['structure']}</div>
                     <div class="{commentary['badge_cls']}">🎯 Aksiyon: {commentary['action']}</div>
                 </div>
