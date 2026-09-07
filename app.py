@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v110.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v115.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -35,12 +35,13 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-count = st_autorefresh(interval=60000, limit=None, key="macro_1100_refresh")
+# 1 dakikada bir otomatik yenile
+count = st_autorefresh(interval=60000, limit=None, key="macro_1150_refresh")
 
 # ==========================================
-# 2. SARSILMAZ MASTER QUANT MOTORU (v110.0)
+# 2. DENGELEŞTİRİLMİŞ QUANT MAKRO MOTORU (v115.0)
 # ==========================================
-class ResilientMasterEngine:
+class BalancedMasterEngine:
     def __init__(self):
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
@@ -51,7 +52,7 @@ class ResilientMasterEngine:
             'CL=F': 'OIL',          # Ham Petrol Vadeli
             'EURUSD=X': 'EUR',      # Dolar Gücü (Ters DXY)
             'USDJPY=X': 'JPY',      # Carry Trade
-            'BTC-USD': 'BTC',       # Bitcoin 24/7
+            'BTC-USD': 'BTC',       # 24/7 Global Likidite
             'ETH-USD': 'ETH',       # Ethereum 24/7
             'ZT=F': 'BONDS_2Y',     # 2Y Hazine Vadeli (Fed Radarı)
             'ZN=F': 'BONDS_10Y',    # 10Y Hazine Vadeli
@@ -98,25 +99,17 @@ class ResilientMasterEngine:
         df = df.resample('15min').last().ffill().bfill().dropna()
         return df
 
-    def calculate_resilient_momentum_series(self, s):
-        """
-        SARSILMAZ 4H ÇAPASI:
-        Günlük Seans Gövdesi (%50) + 4-Saatlik Trend (%35) + 15m/1H İvme (%15).
-        Tek bir 15m haber mumu skoru 1 dakikada tersyüz edemez.
-        """
+    def calculate_daily_momentum_series(self, s):
         if s is None or len(s) < 32:
             return pd.Series(0.0, index=s.index if s is not None else [0])
         
-        r_daily = s.pct_change(32).fillna(0)  # ~8 saatlik seans
-        r_4h    = s.pct_change(16).fillna(0)  # 4 saatlik trend
-        r_1h    = s.pct_change(4).fillna(0)   # 1 saatlik ivme
-        r_15m   = s.pct_change(1).fillna(0)   # 15 dakikalık anlık hız
+        r_daily = s.pct_change(32).fillna(0)
+        r_4h    = s.pct_change(16).fillna(0)
+        r_1h    = s.pct_change(4).fillna(0)
         
-        # Dengeli Çapa Formülü
-        balanced_mom = (0.50 * r_daily) + (0.35 * r_4h) + (0.10 * r_1h) + (0.05 * r_15m)
-        
+        macro_mom = (0.50 * r_daily) + (0.30 * r_4h) + (0.20 * r_1h)
         vol = s.pct_change().rolling(32, min_periods=4).std().fillna(0.0035)
-        sharpe = balanced_mom / (vol + 1e-5)
+        sharpe = macro_mom / (vol + 1e-5)
         return sharpe.clip(-2.5, 2.5)
 
     def calculate_ratio_momentum_series(self, s1, s2):
@@ -124,22 +117,20 @@ class ResilientMasterEngine:
             return pd.Series(0.0, index=s1.index if s1 is not None else [0])
         common_idx = s1.index.intersection(s2.index)
         ratio = s1.loc[common_idx] / (s2.loc[common_idx] + 1e-6)
-        return self.calculate_resilient_momentum_series(ratio)
+        return self.calculate_daily_momentum_series(ratio)
 
     def compute_all_asset_scores(self, df):
         scores = {}
         
-        # 1. 24/5 CANLI İVMELER
-        raw_spx = self.calculate_resilient_momentum_series(df['SPX'])
-        raw_nq  = self.calculate_resilient_momentum_series(df['NQ'])
-        raw_xau = self.calculate_resilient_momentum_series(df['XAU'])
-        raw_xag = self.calculate_resilient_momentum_series(df['XAG'])
+        raw_spx = self.calculate_daily_momentum_series(df['SPX'])
+        raw_nq  = self.calculate_daily_momentum_series(df['NQ'])
+        raw_xau = self.calculate_daily_momentum_series(df['XAU'])
+        raw_xag = self.calculate_daily_momentum_series(df['XAG'])
 
-        raw_btc = self.calculate_resilient_momentum_series(df['BTC'])
-        raw_eth = self.calculate_resilient_momentum_series(df['ETH']) if 'ETH' in df else raw_btc
-        crypto_composite = (0.65 * raw_btc) + (0.35 * raw_eth)
+        raw_btc = self.calculate_daily_momentum_series(df['BTC'])
+        raw_eth = self.calculate_daily_momentum_series(df['ETH']) if 'ETH' in df else raw_btc
+        crypto_composite_mom = (0.65 * raw_btc) + (0.35 * raw_eth)
 
-        # Kardeş Varlık Eşbütünleşmesi
         equity_common = (0.50 * raw_spx) + (0.50 * raw_nq)
         spx_mom = (0.75 * equity_common) + (0.25 * raw_spx)
         nq_mom  = (0.75 * equity_common) + (0.25 * raw_nq)
@@ -149,36 +140,30 @@ class ResilientMasterEngine:
         xag_mom = (0.75 * metals_common) + (0.25 * raw_xag)
 
         btc_macro = raw_btc
-        jpy_macro = self.calculate_resilient_momentum_series(df['JPY'])
-        dxy_macro = -self.calculate_resilient_momentum_series(df['EUR'])
+        jpy_macro = self.calculate_daily_momentum_series(df['JPY'])
+        dxy_macro = -self.calculate_daily_momentum_series(df['EUR'])
         
-        fed_pivot_pressure = -self.calculate_resilient_momentum_series(df['BONDS_2Y'])
-        yield_macro = -self.calculate_resilient_momentum_series(df['BONDS_10Y'])
+        fed_pivot_pressure = -self.calculate_daily_momentum_series(df['BONDS_2Y'])
+        yield_macro = -self.calculate_daily_momentum_series(df['BONDS_10Y'])
         
-        # SIFIRLARI YOK EDEN SENTETİK PRE-MARKET DÖNÜŞÜMLERİ
-        # Eğer ETF'ler kapalıysa CME vadeli farkları devreye girer (Asla 0 kalmaz)
+        credit_risk = self.calculate_ratio_momentum_series(df['HYG'], df['LQD'])
+        credit_flight = self.calculate_ratio_momentum_series(df['HYG'], df['BONDS_30Y'])
+        real_yield_shock = self.calculate_ratio_momentum_series(df['BONDS_10Y'], df['BONDS_30Y'])
         copper_gold = self.calculate_ratio_momentum_series(df['COPPER'], df['XAU'])
         gold_oil = self.calculate_ratio_momentum_series(df['XAU'], df['OIL'])
-        slv_gld = self.calculate_ratio_momentum_series(df['XAG'], df['XAU']).clip(-1.0, 1.5)
+        
+        raw_slv_gld = self.calculate_ratio_momentum_series(df['XAG'], df['XAU'])
+        slv_gld = raw_slv_gld.clip(-1.0, 1.5)
         
         raw_xme = self.calculate_ratio_momentum_series(df['XME'], df['XAU'])
-        xme_gld = raw_xme if abs(raw_xme.iloc[-1]) > 0.05 else copper_gold
+        xme_gld = raw_xme.clip(-1.0, 1.5)
         
-        raw_sector = self.calculate_ratio_momentum_series(df['XLK'], df['XLF'])
-        sector_rot = raw_sector if abs(raw_sector.iloc[-1]) > 0.05 else (nq_mom - spx_mom) # Pre-market canlı fark
-        
-        raw_credit_risk = self.calculate_ratio_momentum_series(df['HYG'], df['LQD'])
-        credit_risk = raw_credit_risk if abs(raw_credit_risk.iloc[-1]) > 0.05 else (0.5 * spx_mom - 0.5 * yield_macro)
-        
-        raw_credit_flight = self.calculate_ratio_momentum_series(df['HYG'], df['BONDS_30Y'])
-        credit_flight = raw_credit_flight if abs(raw_credit_flight.iloc[-1]) > 0.05 else (0.5 * spx_mom + 0.5 * jpy_macro)
-        
-        real_yield_shock = self.calculate_ratio_momentum_series(df['BONDS_10Y'], df['BONDS_30Y'])
+        sector_rot = self.calculate_ratio_momentum_series(df['XLK'], df['XLF']).clip(-1.2, 1.2)
         eth_btc_beta = self.calculate_ratio_momentum_series(df['ETH'], df['BTC']).clip(-1.5, 1.5) if 'ETH' in df else pd.Series(0.0, index=df.index)
 
         factors_series_pool = {
             'SPX_Mom': spx_mom, 'NQ_Mom': nq_mom, 'XAU_Mom': xau_mom, 'XAG_Mom': xag_mom,
-            'Crypto_Mom': crypto_composite, 'ETH_BTC_Beta': eth_btc_beta,
+            'Crypto_Mom': crypto_composite_mom, 'ETH_BTC_Beta': eth_btc_beta,
             'Fed_Pivot_Pressure': fed_pivot_pressure, 'Bond_Yield_Pressure': yield_macro,
             'DXY_Pressure': dxy_macro, 'Real_Yield_Shock': real_yield_shock,
             'Credit_Risk_Spread': credit_risk, 'Credit_Flight_Safety': credit_flight,
@@ -198,18 +183,18 @@ class ResilientMasterEngine:
         z_tightness = tightness_raw.iloc[-1] / (t_vol + 1e-5)
 
         if z_growth > 0.3 and z_tightness <= 0.0:
-            regime_info = {'name': "☀️ GOLDILOCKS & FED LİKİDİTE GENİŞLEMESİ", 'css': "regime-goldilocks", 'desc': "Fed faiz baskısı kalktı, Dolar sakin. Hisse, Kripto ve teknoloji için ideal ralli ortamı."}
+            regime_info = {'name': "☀️ GOLDILOCKS & FED LİKİDİTE GENİŞLEMESİ", 'css': "regime-goldilocks", 'desc': "Fed faiz baskısı kalktı, Dolar sakin. Hisse senetleri ve teknoloji için ideal ralli ortamı."}
         elif z_growth > 0.3 and z_tightness > 0.3:
             regime_info = {'name': "🚀 REFLASYON (Güçlü Büyüme & Emtia Patlaması)", 'css': "regime-reflation", 'desc': "Gümüş, Bakır ve Sanayi hisseleri küresel büyümeyi fiyatlıyor."}
         elif z_growth <= 0.3 and z_tightness > 0.3:
-            regime_info = {'name': "🌋 STAGFLASYON & FED ŞAHİN SIKIŞMASI", 'css': "regime-stagflation", 'desc': "Faizler yüksek, Fed baskısı hisseleri ve değerlemeleri eziyor."}
+            regime_info = {'name': "🌋 STAGFLASYON & FED ŞAHİN SIKIŞMASI", 'css': "regime-stagflation", 'desc': "2Y ve 10Y faizler yüksek, Fed baskısı hisseleri ve değerlemeleri eziyor."}
         elif z_growth < -0.4 and z_tightness <= 0.0:
             regime_info = {'name': "❄️ DEFLASYON / RESESYON KRİZİ", 'css': "regime-deflation", 'desc': "Büyüme çöküşte, nakit ve devlet tahvilleri sığınak."}
         else:
-            regime_info = {'name': "⚪ DENGELİ GEÇİŞ REJİMİ (Konsolidasyon)", 'css': "regime-neutral", 'desc': "Piyasa dengeli ve yönsüz konsolide oluyor."}
+            regime_info = {'name': "⚪ DENGELİ GEÇİŞ REJİMİ (Konsolidasyon)", 'css': "regime-neutral", 'desc': "Piyasa Fed beklentileri öncesinde dengeli konsolide oluyor."}
 
-        # HESAPLAMA MOTORU (DENGELİ DİKKAT ÇARPANI)
-        def build_resilient_result(base_weights, target_mom_series, asset_name):
+        # DENGELENMİŞ HESAPLAMA MOTORU (FİYAT TAVANI %25)
+        def build_balanced_result(base_weights, target_mom_series, asset_name):
             bar_scores = []
             lookback_bars = min(len(df), 96)
             
@@ -226,16 +211,23 @@ class ResilientMasterEngine:
             multipliers = {}
             for k, w in base_weights.items():
                 val = abs(factors_series_pool[k].iloc[-1])
-                # Karekök süzgeci (sqrt) ile ani haber zıplamaları evcilleştirildi
-                multipliers[k] = abs(w) * (1.0 + np.sqrt(min(val, 2.5)))
+                multipliers[k] = abs(w) * (1.0 + (min(val, 2.0) ** 0.8))
             
             total_att = sum(multipliers.values()) + 1e-6
             dyn_weights = {}
             for k, w in base_weights.items():
                 sign = 1.0 if w >= 0 else -1.0
                 raw_norm = (multipliers[k] / total_att) * 100.0
+                
+                # FİYAT İVMESİ TAVANI %25'E KİLİTLENDİ (%40 ŞİŞMESİ ENGELLENDİ!)
+                if '_Mom' in k:
+                    raw_norm = max(min(raw_norm, 25.0), 20.0)
+                else:
+                    raw_norm = min(raw_norm, 15.0)
+                    
                 dyn_weights[k] = raw_norm * sign
 
+            # Ağırlıkların toplamını kesin %100 yap
             total_actual = sum(abs(v) for v in dyn_weights.values()) + 1e-6
             for k in dyn_weights:
                 dyn_weights[k] = (dyn_weights[k] / total_actual) * 100.0
@@ -246,7 +238,7 @@ class ResilientMasterEngine:
                 contribution = val * (w / 100.0)
                 breakdown.append({
                     'Katman (Öncü Faktör)': k,
-                    'Canlı İvme': round(val, 2),
+                    'Günlük Makro İvme': round(val, 2),
                     'Dinamik Ağırlık (%)': round(w, 1),
                     'Net Katkı': round(contribution, 3)
                 })
@@ -266,11 +258,11 @@ class ResilientMasterEngine:
                 css = "div-neutral"
 
             if final_score > adaptive_threshold:
-                structure = "Küresel makro likidite ve 4H trend alıcıları güçlü destekliyor."
+                structure = "Fed faiz indirimi rüzgarı ve küresel likidite alıcıları güçlü destekliyor."
                 action = "🚀 TRENDİ SÜR: 4H Alım yönlü pozisyonlar güvenle taşınabilir. Direnç kırılımlarını takip et."
                 badge_cls = "action-badge"
             elif final_score < -adaptive_threshold:
-                structure = "Yükselen faizler, Dolar baskısı ve makro fren piyasayı eziyor."
+                structure = "Fed şahin baskısı, yükselen faizler ve likidite çekilmesi piyasayı eziyor."
                 action = "🩸 SATIŞ BASKISI DEVAM: 4H Satış yönlü pozisyonlar korunabilir. Destek kırılımlarını izle."
                 badge_cls = "action-badge-bear"
             else:
@@ -290,58 +282,93 @@ class ResilientMasterEngine:
             }
 
         # ----------------------------------------------------
-        # 5 VARLIK MATRİSLERİ
+        # 5 VARLIK İÇİN %20-%25 DENGELENMİŞ BAZ MATRİSLER
         # ----------------------------------------------------
-        # 1. S&P 500
-        spx_base = {
-            'SPX_Mom': 35.0, 'Fed_Pivot_Pressure': -15.0, 'Credit_Risk_Spread': 15.0,
-            'Credit_Flight_Safety': 10.0, 'Bond_Yield_Pressure': -10.0, 'DXY_Pressure': -10.0,
-            'Sector_Rotation': 10.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0, 'Copper_Gold': 5.0
-        }
-        scores['SPX'] = build_resilient_result(spx_base, spx_mom, "S&P 500")
-
-        # 2. NASDAQ
-        nq_base = {
-            'NQ_Mom': 35.0, 'Fed_Pivot_Pressure': -20.0, 'Sector_Rotation': 15.0,
-            'Bond_Yield_Pressure': -15.0, 'Credit_Risk_Spread': 10.0, 'DXY_Pressure': -10.0,
-            'Credit_Flight_Safety': 5.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0, 'Copper_Gold': 5.0
-        }
-        scores['NQ'] = build_resilient_result(nq_base, nq_mom, "NASDAQ")
-
-        # 3. ALTIN
-        xau_base = {
-            'XAU_Mom': 35.0, 'Real_Yield_Shock': 20.0, 'Fed_Pivot_Pressure': -15.0,
-            'DXY_Pressure': -15.0, 'Bond_Yield_Pressure': -10.0, 'Gold_Oil': 10.0,
-            'SLV_GLD_Beta': 5.0, 'Carry_Trade': 5.0, 'Copper_Gold': -3.0, 'BTC_Liquidity': -2.0
-        }
-        scores['XAU'] = build_resilient_result(xau_base, xau_mom, "ALTIN")
-
-        # 4. GÜMÜŞ
+        # 1. GÜMÜŞ (SI=F)
         xag_base = {
-            'XAG_Mom': 35.0, 'Fed_Pivot_Pressure': -15.0, 'DXY_Pressure': -15.0,
-            'Real_Yield_Shock': 15.0, 'Copper_Gold': 10.0, 'XME_GLD_Ratio': 10.0,
-            'SLV_GLD_Beta': 5.0, 'Bond_Yield_Pressure': -5.0, 'BTC_Liquidity': 5.0, 'Gold_Oil': 5.0
+            'XAG_Mom': 25.0,               # Fiyat Tavanı %25
+            'Copper_Gold': 15.0,           # Sanayi Talebi
+            'Fed_Pivot_Pressure': -15.0,   # 2Y Fed İndirimi
+            'XME_GLD_Ratio': 10.0,         # Madencilik
+            'SLV_GLD_Beta': 10.0,          # Gümüş Gücü
+            'DXY_Pressure': -10.0,         # Dolar Baskısı
+            'Real_Yield_Shock': 5.0,       # Reel Faiz
+            'Bond_Yield_Pressure': -5.0,   # 10Y Faiz
+            'BTC_Liquidity': 5.0,          # Kripto Likidite
+            'Gold_Oil': 5.0                # Hammadde Enflasyonu
         }
-        scores['XAG'] = build_resilient_result(xag_base, xag_mom, "GÜMÜŞ")
+        scores['XAG'] = build_balanced_result(xag_base, xag_mom, "GÜMÜŞ")
 
-        # 5. KRİPTO
-        crypto_base = {
-            'Crypto_Mom': 30.0, 'Fed_Pivot_Pressure': -20.0, 'Sector_Rotation': 10.0,
-            'ETH_BTC_Beta': 10.0, 'DXY_Pressure': -10.0, 'Credit_Risk_Spread': 10.0,
-            'Carry_Trade': 5.0, 'Copper_Gold': 5.0, 'Real_Yield_Shock': -5.0, 'Bond_Yield_Pressure': -5.0
+        # 2. ALTIN (GC=F)
+        xau_base = {
+            'XAU_Mom': 25.0,               # Fiyat Tavanı %25
+            'Real_Yield_Shock': 20.0,      # Reel Faiz Koruması
+            'Fed_Pivot_Pressure': -15.0,   # 2Y Fed İndirimi
+            'DXY_Pressure': -15.0,         # Dolar Tabanı
+            'Bond_Yield_Pressure': -10.0,  # 10Y Faiz
+            'Gold_Oil': 10.0,              # Stagflasyon
+            'SLV_GLD_Beta': 5.0,           # Maden İştahı
+            'Carry_Trade': 5.0,            # FX Uyumu
+            'Copper_Gold': -3.0,           # Sanayi Ayrışması
+            'BTC_Liquidity': -2.0          # Alternatif Rekabet
         }
-        scores['CRYPTO'] = build_resilient_result(crypto_base, crypto_composite, "KRİPTO (BTC+ETH)")
+        scores['XAU'] = build_balanced_result(xau_base, xau_mom, "ALTIN")
+
+        # 3. S&P 500 (ES=F)
+        spx_base = {
+            'SPX_Mom': 25.0,               # Fiyat Tavanı %25
+            'Fed_Pivot_Pressure': -15.0,   # 2Y Fed İndirimi
+            'Credit_Risk_Spread': 15.0,    # Temerrüt Sağlığı
+            'Credit_Flight_Safety': 10.0,  # Hisseye Geçiş
+            'Bond_Yield_Pressure': -10.0,  # 10Y Faiz
+            'DXY_Pressure': -10.0,         # Dolar Baskısı
+            'Sector_Rotation': 10.0,       # Sektör Gücü
+            'Carry_Trade': 5.0,            # Fonlama Akışı
+            'BTC_Liquidity': 5.0,          # Likidite
+            'Copper_Gold': 5.0             # Büyüme
+        }
+        scores['SPX'] = build_balanced_result(spx_base, spx_mom, "S&P 500")
+
+        # 4. NASDAQ (NQ=F)
+        nq_base = {
+            'NQ_Mom': 25.0,                # Fiyat Tavanı %25
+            'Fed_Pivot_Pressure': -20.0,   # 2Y Fed İndirimi
+            'Sector_Rotation': 15.0,       # Teknoloji Liderliği
+            'Bond_Yield_Pressure': -15.0,  # 10Y Faiz
+            'Credit_Risk_Spread': 10.0,    # Kredi Sağlığı
+            'DXY_Pressure': -10.0,         # Dolar Baskısı
+            'Credit_Flight_Safety': 5.0,   # Risk İştahı
+            'Carry_Trade': 5.0,            # Fonlama
+            'BTC_Liquidity': 5.0,          # Likidite
+            'Copper_Gold': 5.0             # Büyüme
+        }
+        scores['NQ'] = build_balanced_result(nq_base, nq_mom, "NASDAQ")
+
+        # 5. KRİPTO (BTC+ETH)
+        crypto_base = {
+            'Crypto_Mom': 25.0,            # Fiyat Tavanı %25 (Şişme Yok!)
+            'Fed_Pivot_Pressure': -20.0,   # 2Y Fed İndirimi
+            'Sector_Rotation': 10.0,       # Teknoloji Riski
+            'ETH_BTC_Beta': 10.0,          # Altcoin İştahı
+            'DXY_Pressure': -10.0,         # Dolar Baskısı
+            'Credit_Risk_Spread': 10.0,    # Kredi İştahı
+            'Carry_Trade': 5.0,            # Fiat Likidite
+            'Copper_Gold': 5.0,            # Büyüme
+            'Real_Yield_Shock': -5.0,      # Reel Faiz
+            'Bond_Yield_Pressure': -5.0    # 10Y Faiz
+        }
+        scores['CRYPTO'] = build_balanced_result(crypto_base, crypto_composite_mom, "KRİPTO (BTC+ETH)")
 
         return scores, regime_info
 
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = ResilientMasterEngine()
+engine = BalancedMasterEngine()
 
-st.title("🏛️ TIER-1 MASTER TERMINAL (v110.0)")
-st.markdown('<span class="status-badge">⚡ ZERO-WHIPLASH & CONTINUOUS PRE-MARKET ENGINE</span>', unsafe_allow_html=True)
-st.caption("15:30 Haber Zıplama Kalkanı + Tam Dolu Sentetik Pre-Market Akışı")
+st.title("🏛️ TIER-1 MASTER TERMINAL (v115.0)")
+st.markdown('<span class="status-badge">⚡ BALANCED PRICE (%25 CAP) & US HOLIDAY RESILIENCE</span>', unsafe_allow_html=True)
+st.caption("Fiyat Ağırlığı %25'e Kilitlendi + Dengeleştirilmiş 10-Katmanlı Makro Matris")
 
 try:
     df_grid = engine.fetch_synchronized_grid()
@@ -351,7 +378,7 @@ try:
     else:
         results, regime_info = engine.compute_all_asset_scores(df_grid)
 
-        # HAKİKİ REJİM BANDI
+        # HAKİKİ MAKRO REJİM BANDI
         st.markdown(f"""
         <div class="regime-box {regime_info['css']}">
             Mevcut Küresel Makro Rejim: {regime_info['name']}<br>
@@ -390,7 +417,7 @@ try:
                 st.markdown(f"<h1 style='color: {c}; font-size: 55px; margin:0;'>{score:.1f}</h1>", unsafe_allow_html=True)
                 st.markdown(f'<div class="{div_class}">{div_msg}</div>', unsafe_allow_html=True)
                 
-                # Taktiksel Kart
+                # Taktiksel Yorum Kartı
                 st.markdown(f"""
                 <div class="commentary-card">
                     <div class="commentary-header">📊 Portföy Masası Teşhisi:</div>
