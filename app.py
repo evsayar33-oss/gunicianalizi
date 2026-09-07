@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v130.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v140.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -37,12 +37,12 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # 1 dakikada bir otomatik yenile
-count = st_autorefresh(interval=60000, limit=None, key="macro_1300_refresh")
+count = st_autorefresh(interval=60000, limit=None, key="macro_1400_refresh")
 
 # ==========================================
-# 2. DENETLENMİŞ QUANT MAKRO MOTORU (v130.0)
+# 2. FONLAMA VE LİKİDİTE QUANT MOTORU (v140.0)
 # ==========================================
-class AuditedMacroEngine:
+class FundingLiquidityEngine:
     def __init__(self):
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
@@ -60,6 +60,7 @@ class AuditedMacroEngine:
             'ZB=F': 'BONDS_30Y',    # 30Y Uzun Vade Vadeli
             'HYG': 'HYG',           # Junk Kredi
             'LQD': 'LQD',           # IG Kredi
+            'KRE': 'KRE',           # YENİ: Bölgesel Bankalar (Fonlama/Likidite Stresi)
             'XLK': 'XLK',           # Teknoloji
             'XLF': 'XLF',           # Finans
             'RSP': 'RSP',           # Eşit Ağırlıklı S&P 500
@@ -137,27 +138,24 @@ class AuditedMacroEngine:
         return self.calculate_active_tape_momentum(ratio)
 
     def detect_rigorous_macro_regime(self, factors):
-        """
-        KUSURSUZ DENETLENMİŞ REJİM MOTORU:
-        Carry trade çöküyorsa veya Bakır zayıfsa asla sahte Reflasyon/Boğa basamaz!
-        """
         carry = factors['Carry_Trade']
         copper = factors['Copper_Gold']
         dxy = factors['DXY_Pressure']
         yields = factors['Bond_Yield_Pressure']
         fed_pivot = factors['Fed_Pivot_Pressure']
         credit = factors['Credit_Risk_Spread']
+        funding_stress = factors['Funding_Liquidity_Stress']
         spx = factors['SPX_Mom']
 
-        # 1. KARIŞIK LİKİDİTE KONSOLİDASYONU (Şu anki gerçek durum)
-        if dxy < -0.5 and (carry < -0.8 or yields > 0.8 or fed_pivot > 0.5 or copper < 0.3):
+        # 1. KARIŞIK LİKİDİTE KONSOLİDASYONU
+        if dxy < -0.5 and (carry < -0.8 or yields > 0.8 or fed_pivot > 0.5 or copper < 0.3 or funding_stress < -0.8):
             return {
-                'name': "⚠️ KARIŞIK LİKİDİTE KONSOLİDASYONU (Dolar Gevşemesi vs. Faiz/Carry Stresi)",
+                'name': "⚠️ KARIŞIK LİKİDİTE KONSOLİDASYONU (Dolar Gevşemesi vs. Fonlama/Faiz Stresi)",
                 'css': "regime-mixed",
-                'desc': "Zayıf Dolar hisselere taban sağlıyor ancak yükselen faizler ve çözülen Carry Trade baskı yaratıyor. Yönsüz denge."
+                'desc': "Zayıf Dolar taban sağlıyor ancak yükselen faizler ve bankalararası fonlama stresi baskı yaratıyor. Yönsüz denge."
             }
 
-        # 2. HAKİKİ REFLASYON (Carry güçlü, Bakır güçlü, Büyüme teyitli)
+        # 2. HAKİKİ REFLASYON
         elif copper > 0.8 and carry > 0.0 and factors['Gold_Oil'] > 0 and spx > 0:
             return {
                 'name': "🚀 HAKİKİ REFLASYON (Güçlü Büyüme & Sanayi Emtiası Liderliği)",
@@ -166,11 +164,11 @@ class AuditedMacroEngine:
             }
 
         # 3. GENİŞ TABANLI BOĞA (Goldilocks)
-        elif spx > 0.5 and dxy < 0 and yields < 0.3 and fed_pivot < 0.3 and carry > 0:
+        elif spx > 0.5 and dxy < 0 and yields < 0.3 and fed_pivot < 0.3 and carry > 0 and funding_stress > 0:
             return {
                 'name': "☀️ GENİŞ TABANLI BOĞA RALLİSİ (Goldilocks)",
                 'css': "regime-goldilocks",
-                'desc': "Faiz baskısı yok, Dolar zayıf, fonlama canlı. Tüm varlıklar güçlü alıcılı."
+                'desc': "Fonlama stresi yok, Dolar zayıf, faiz baskısı kalktı. Tüm varlıklar güçlü alıcılı."
             }
 
         # 4. STAGFLASYON & FAİZ BASKISI
@@ -181,12 +179,12 @@ class AuditedMacroEngine:
                 'desc': "Yükselen faizler değerlemeleri eziyor. Güvenli liman arayışı."
             }
 
-        # 5. DEFLASYONİST ÇÖKÜŞ
-        elif spx < -0.5 and credit < -0.8:
+        # 5. DEFLASYONİST ÇÖKÜŞ / SİSTEMİK KRİZ
+        elif spx < -0.5 and (credit < -0.8 or funding_stress < -1.2):
             return {
-                'name': "❄️ DEFLASYONİST ÇÖKÜŞ & KREDİ KRİZİ",
+                'name': "❄️ DEFLASYONİST ÇÖKÜŞ & BANKACILIK/FONLAMA KRİZİ",
                 'css': "regime-deflation",
-                'desc': "Tüm riskli varlıklardan nakde kaçış."
+                'desc': "Bankalararası fonlama kilitlendi, tüm riskli varlıklardan nakde kaçış."
             }
 
         else:
@@ -223,8 +221,13 @@ class AuditedMacroEngine:
         fed_pivot_pressure = -self.calculate_active_tape_momentum(df['BONDS_2Y'])
         yield_macro = -self.calculate_active_tape_momentum(df['BONDS_10Y'])
         
+        # YENİ KURUMSAL LİKİDİTE OMURGASI (Çoklu Doğrusallık Silindi):
+        # 1. Saf Şirket Temerrüt Riski (HYG / LQD)
         credit_risk = self.calculate_ratio_active_momentum(df['HYG'], df['LQD'])
-        credit_flight = self.calculate_ratio_active_momentum(df['HYG'], df['BONDS_30Y'])
+        
+        # 2. YENİ: Bankalararası Fonlama & Likidite Stresi (KRE / XLF - SOFR/Repo Erken Uyarı Radarı)
+        funding_stress = self.calculate_ratio_active_momentum(df['KRE'], df['XLF'])
+        
         real_yield_shock = self.calculate_ratio_active_momentum(df['BONDS_10Y'], df['BONDS_30Y'])
         copper_gold = self.calculate_ratio_active_momentum(df['COPPER'], df['XAU'])
         gold_oil = self.calculate_ratio_active_momentum(df['XAU'], df['OIL'])
@@ -238,17 +241,17 @@ class AuditedMacroEngine:
             'Crypto_Mom': crypto_composite_mom, 'ETH_BTC_Beta': eth_btc_beta,
             'Fed_Pivot_Pressure': fed_pivot_pressure, 'Bond_Yield_Pressure': yield_macro,
             'DXY_Pressure': dxy_macro, 'Real_Yield_Shock': real_yield_shock,
-            'Credit_Risk_Spread': credit_risk, 'Credit_Flight_Safety': credit_flight,
+            'Credit_Risk_Spread': credit_risk, 'Funding_Liquidity_Stress': funding_stress,
             'Sector_Rotation': sector_rot, 'Copper_Gold': copper_gold,
             'Gold_Oil': gold_oil, 'SLV_GLD_Beta': slv_gld,
             'XME_GLD_Ratio': xme_gld, 'BTC_Liquidity': btc_macro, 'Carry_Trade': jpy_macro
         }
 
-        # REJİM KONSENSÜSÜ
+        # REJİM MOTORU
         regime_info = self.detect_rigorous_macro_regime(factors_pool)
 
         # HESAPLAMA MOTORU
-        def build_audited_result(base_weights, factors_dict):
+        def build_funding_engine_result(base_weights, factors_dict):
             multipliers = {}
             for k, w in base_weights.items():
                 val = abs(factors_dict.get(k, 0.0))
@@ -260,6 +263,7 @@ class AuditedMacroEngine:
                 sign = 1.0 if w >= 0 else -1.0
                 raw_norm = (multipliers[k] / total_att) * 100.0
                 
+                # Fiyat İvmesi %20-%25 Arasında Dengelenir
                 if '_Mom' in k:
                     raw_norm = max(min(raw_norm, 25.0), 20.0)
                 else:
@@ -297,7 +301,7 @@ class AuditedMacroEngine:
                 msg = "⚪ DENGELİ KONSOLİDASYON (Piyasa Yönsüz / Bekle)"
                 css = "div-neutral"
 
-            # DİNAMİK OTOMATİK TEŞHİS (Tablonun En Büyük Güçlerini Doğrudan Okur)
+            # DİNAMİK OTOMATİK TEŞHİS
             top_positive = breakdown_df.iloc[0] if not breakdown_df.empty else None
             top_negative = breakdown_df.iloc[-1] if not breakdown_df.empty else None
 
@@ -321,52 +325,59 @@ class AuditedMacroEngine:
 
             return {'score': final_score, 'table': breakdown_df, 'msg': msg, 'css': css, 'commentary': commentary}
 
-        # MATRİSLER
+        # ----------------------------------------------------
+        # 5 VARLIK İÇİN YENİ KURUMSAL MATRİSLER (ÇAKIŞMASIZ)
+        # ----------------------------------------------------
+        # 1. GÜMÜŞ (SI=F)
         xag_base = {
             'XAG_Mom': 25.0, 'Copper_Gold': 15.0, 'Fed_Pivot_Pressure': -15.0,
             'XME_GLD_Ratio': 10.0, 'SLV_GLD_Beta': 10.0, 'DXY_Pressure': -10.0,
             'Real_Yield_Shock': 5.0, 'Bond_Yield_Pressure': -5.0, 'BTC_Liquidity': 5.0, 'Gold_Oil': 5.0
         }
-        scores['XAG'] = build_audited_result(xag_base, factors_pool)
+        scores['XAG'] = build_funding_engine_result(xag_base, factors_pool)
 
+        # 2. ALTIN (GC=F - Fonlama Stresi Krizinde Altın Uçar: -10%)
         xau_base = {
             'XAU_Mom': 25.0, 'Real_Yield_Shock': 20.0, 'Fed_Pivot_Pressure': -15.0,
-            'DXY_Pressure': -15.0, 'Bond_Yield_Pressure': -10.0, 'Gold_Oil': 10.0,
-            'SLV_GLD_Beta': 5.0, 'Carry_Trade': 5.0, 'Copper_Gold': -3.0, 'BTC_Liquidity': -2.0
+            'DXY_Pressure': -15.0, 'Bond_Yield_Pressure': -10.0, 'Funding_Liquidity_Stress': -10.0,
+            'Gold_Oil': 5.0, 'SLV_GLD_Beta': 5.0, 'Carry_Trade': 5.0, 'Copper_Gold': -3.0
         }
-        scores['XAU'] = build_audited_result(xau_base, factors_pool)
+        scores['XAU'] = build_funding_engine_result(xau_base, factors_pool)
 
+        # 3. S&P 500 (ES=F - Fonlama ve Temerrüt Ayrıştırıldı)
         spx_base = {
-            'SPX_Mom': 25.0, 'Fed_Pivot_Pressure': -15.0, 'Credit_Risk_Spread': 15.0,
-            'Credit_Flight_Safety': 10.0, 'Bond_Yield_Pressure': -10.0, 'DXY_Pressure': -10.0,
+            'SPX_Mom': 25.0, 'Funding_Liquidity_Stress': 15.0, 'Credit_Risk_Spread': 15.0,
+            'Fed_Pivot_Pressure': -15.0, 'Bond_Yield_Pressure': -10.0, 'DXY_Pressure': -10.0,
             'Sector_Rotation': 10.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0, 'Copper_Gold': 5.0
         }
-        scores['SPX'] = build_audited_result(spx_base, factors_pool)
+        scores['SPX'] = build_funding_engine_result(spx_base, factors_pool)
 
+        # 4. NASDAQ (NQ=F)
         nq_base = {
             'NQ_Mom': 25.0, 'Fed_Pivot_Pressure': -20.0, 'Sector_Rotation': 15.0,
-            'Bond_Yield_Pressure': -15.0, 'Credit_Risk_Spread': 10.0, 'DXY_Pressure': -10.0,
-            'Credit_Flight_Safety': 5.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0, 'Copper_Gold': 5.0
+            'Bond_Yield_Pressure': -15.0, 'Funding_Liquidity_Stress': 10.0, 'Credit_Risk_Spread': 10.0,
+            'DXY_Pressure': -10.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0, 'Copper_Gold': 5.0
         }
-        scores['NQ'] = build_audited_result(nq_base, factors_pool)
+        scores['NQ'] = build_funding_engine_result(nq_base, factors_pool)
 
+        # 5. KRİPTO (BTC+ETH)
         crypto_base = {
             'Crypto_Mom': 25.0, 'Fed_Pivot_Pressure': -20.0, 'Sector_Rotation': 10.0,
-            'ETH_BTC_Beta': 10.0, 'DXY_Pressure': -10.0, 'Credit_Risk_Spread': 10.0,
-            'Carry_Trade': 5.0, 'Copper_Gold': 5.0, 'Real_Yield_Shock': -5.0, 'Bond_Yield_Pressure': -5.0
+            'ETH_BTC_Beta': 10.0, 'DXY_Pressure': -10.0, 'Funding_Liquidity_Stress': 10.0,
+            'Credit_Risk_Spread': 5.0, 'Carry_Trade': 5.0, 'Copper_Gold': 5.0, 'Bond_Yield_Pressure': -5.0
         }
-        scores['CRYPTO'] = build_audited_result(crypto_base, factors_pool)
+        scores['CRYPTO'] = build_funding_engine_result(crypto_base, factors_pool)
 
         return scores, regime_info
 
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = AuditedMacroEngine()
+engine = FundingLiquidityEngine()
 
-st.title("🏛️ TIER-1 MASTER TERMINAL (v130.0)")
-st.markdown('<span class="status-badge">🛡️ AUDITED RIGOROUS MACRO ENGINE</span>', unsafe_allow_html=True)
-st.caption("Matematiksel ve Mantıksal Çelişkilerden Arındırılmış Hakiki Makro Konsensüs Motoru")
+st.title("🏛️ TIER-1 MASTER TERMINAL (v140.0)")
+st.markdown('<span class="status-badge">⚡ SOFR/REPO FUNDING STRESS & ZERO-MULTICOLLINEARITY ENGINE</span>', unsafe_allow_html=True)
+st.caption("Bankalararası Fonlama Stresi (KRE/XLF) + Çakışmasız Saf Kurumsal Kredi Matrisi")
 
 try:
     df_grid = engine.fetch_synchronized_grid()
@@ -403,12 +414,13 @@ try:
             with col1:
                 st.markdown(f"### {asset_title} 4H Rotası")
                 
+                # Nötr bölge [-15, +15] BEYAZ!
                 if score > 15:
-                    c = "#00E676"
+                    c = "#00E676"  # Yeşil (Boğa)
                 elif score < -15:
-                    c = "#FF1744"
+                    c = "#FF1744"  # Kırmızı (Ayı)
                 else:
-                    c = "#ECEFF1"
+                    c = "#ECEFF1"  # Beyaz (Nötr)
 
                 st.markdown(f"<h1 style='color: {c}; font-size: 55px; margin:0;'>{score:.1f}</h1>", unsafe_allow_html=True)
                 st.markdown(f'<div class="{div_class}">{div_msg}</div>', unsafe_allow_html=True)
