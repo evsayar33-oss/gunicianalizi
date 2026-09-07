@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v140.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 PREDICTIVE TERMINAL (v150.0)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -37,12 +37,12 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # 1 dakikada bir otomatik yenile
-count = st_autorefresh(interval=60000, limit=None, key="macro_1400_refresh")
+count = st_autorefresh(interval=60000, limit=None, key="macro_1500_refresh")
 
 # ==========================================
-# 2. FONLAMA VE LİKİDİTE QUANT MOTORU (v140.0)
+# 2. ÖNGÖRÜSEL VE TÜREVLİ QUANT MAKRO MOTORU (v150.0)
 # ==========================================
-class FundingLiquidityEngine:
+class PredictiveKinematicEngine:
     def __init__(self):
         self.symbol_map = {
             'ES=F': 'SPX',          # S&P 500 Vadeli
@@ -60,7 +60,7 @@ class FundingLiquidityEngine:
             'ZB=F': 'BONDS_30Y',    # 30Y Uzun Vade Vadeli
             'HYG': 'HYG',           # Junk Kredi
             'LQD': 'LQD',           # IG Kredi
-            'KRE': 'KRE',           # YENİ: Bölgesel Bankalar (Fonlama/Likidite Stresi)
+            'KRE': 'KRE',           # Bankacılık Likidite Stresi
             'XLK': 'XLK',           # Teknoloji
             'XLF': 'XLF',           # Finans
             'RSP': 'RSP',           # Eşit Ağırlıklı S&P 500
@@ -101,41 +101,52 @@ class FundingLiquidityEngine:
         df = df.resample('15min').last().ffill().bfill().dropna()
         return df
 
-    def calculate_active_tape_momentum(self, s):
+    def calculate_predictive_kinematics(self, s):
+        """
+        GELECEĞİ HESAPLAYAN KİNEMATİK MOTOR:
+        1. Anlık Hız (Velocity)
+        2. İkinci Türev (İvme / Güç Tükenmesi - Acceleration)
+        3. Lastik Bandı Aşırı Şişme/Düzeltme Çapası (Mean-Reversion Elasticity)
+        """
         if s is None or s.empty:
             return 0.0
         
         s_active = s.loc[s.shift() != s].dropna()
-        if len(s_active) < 8:
+        if len(s_active) < 16:
             s_active = s.dropna()
             
-        if len(s_active) < 8:
+        if len(s_active) < 16:
             return 0.0
         
-        idx_daily = min(32, len(s_active) - 1)
-        idx_4h    = min(16, len(s_active) - 1)
-        idx_1h    = min(4, len(s_active) - 1)
+        # 1. HIZLAR (1H ve 4H Getiri Hızı)
+        v1h = (s_active.iloc[-1] / s_active.iloc[-min(4, len(s_active)-1)]) - 1.0
+        v4h = (s_active.iloc[-1] / s_active.iloc[-min(16, len(s_active)-1)]) - 1.0
         
-        r_daily = (s_active.iloc[-1] / s_active.iloc[-idx_daily]) - 1.0
-        r_4h    = (s_active.iloc[-1] / s_active.iloc[-idx_4h]) - 1.0
-        r_1h    = (s_active.iloc[-1] / s_active.iloc[-idx_1h]) - 1.0
+        # 2. İKİNCİ TÜREV (İVME / GÜÇ TÜKENMESİ): Son 1 saatin hızı, önceki saatlerden hızlı mı yavaş mı?
+        v1h_prev = (s_active.iloc[-min(4, len(s_active)-1)] / s_active.iloc[-min(8, len(s_active)-1)]) - 1.0 if len(s_active) >= 8 else v1h
+        acceleration = v1h - v1h_prev # Hız artıyor mu (ivmelenme), yoksa tepeye çarpıp yavaşlıyor mu?
         
-        balanced_mom = (0.50 * r_daily) + (0.35 * r_4h) + (0.15 * r_1h)
+        # 3. LASTİK BANDI ELASTİSİTESİ (Ortalamadan Sapma): Tepeye aşırı şiştiyse düzeltme baskısı üretir
+        rolling_mean_24 = s_active.tail(24).mean()
+        elasticity_stretch = (s_active.iloc[-1] - rolling_mean_24) / (rolling_mean_24 + 1e-6)
         
         pct = s_active.pct_change().dropna()
         vol = pct.tail(32).std()
         if pd.isna(vol) or vol < 1e-5:
             vol = 0.0035
             
-        sharpe = balanced_mom / vol
+        # GELECEK ÖNGÖRÜ FORMÜLÜ: Hız (%45) + İvme/Güç Artışı (%35) - Aşırı Şişme Düzeltmesi (%20)
+        predictive_mom = (0.45 * v1h) + (0.35 * acceleration * 2.0) - (0.20 * elasticity_stretch * 0.5) + (0.20 * v4h)
+        
+        sharpe = predictive_mom / vol
         return float(np.clip(sharpe, -2.5, 2.5))
 
-    def calculate_ratio_active_momentum(self, s1, s2):
+    def calculate_ratio_predictive(self, s1, s2):
         if s1 is None or s2 is None or s1.empty or s2.empty:
             return 0.0
         common_idx = s1.index.intersection(s2.index)
         ratio = s1.loc[common_idx] / (s2.loc[common_idx] + 1e-6)
-        return self.calculate_active_tape_momentum(ratio)
+        return self.calculate_predictive_kinematics(ratio)
 
     def detect_rigorous_macro_regime(self, factors):
         carry = factors['Carry_Trade']
@@ -147,46 +158,41 @@ class FundingLiquidityEngine:
         funding_stress = factors['Funding_Liquidity_Stress']
         spx = factors['SPX_Mom']
 
-        # 1. KARIŞIK LİKİDİTE KONSOLİDASYONU
+        # KARIŞIK LİKİDİTE KONSOLİDASYONU
         if dxy < -0.5 and (carry < -0.8 or yields > 0.8 or fed_pivot > 0.5 or copper < 0.3 or funding_stress < -0.8):
             return {
                 'name': "⚠️ KARIŞIK LİKİDİTE KONSOLİDASYONU (Dolar Gevşemesi vs. Fonlama/Faiz Stresi)",
                 'css': "regime-mixed",
-                'desc': "Zayıf Dolar taban sağlıyor ancak yükselen faizler ve bankalararası fonlama stresi baskı yaratıyor. Yönsüz denge."
+                'desc': "Zayıf Dolar taban sağlıyor ancak faiz ve bankalararası fonlama stresi baskı yaratıyor. Yönsüz denge."
             }
-
-        # 2. HAKİKİ REFLASYON
+        # HAKİKİ REFLASYON
         elif copper > 0.8 and carry > 0.0 and factors['Gold_Oil'] > 0 and spx > 0:
             return {
                 'name': "🚀 HAKİKİ REFLASYON (Güçlü Büyüme & Sanayi Emtiası Liderliği)",
                 'css': "regime-reflation",
                 'desc': "Bakır, Gümüş ve Sanayi hisseleri küresel büyümeyi teyitli şekilde fiyatlıyor."
             }
-
-        # 3. GENİŞ TABANLI BOĞA (Goldilocks)
+        # GENİŞ TABANLI BOĞA
         elif spx > 0.5 and dxy < 0 and yields < 0.3 and fed_pivot < 0.3 and carry > 0 and funding_stress > 0:
             return {
                 'name': "☀️ GENİŞ TABANLI BOĞA RALLİSİ (Goldilocks)",
                 'css': "regime-goldilocks",
                 'desc': "Fonlama stresi yok, Dolar zayıf, faiz baskısı kalktı. Tüm varlıklar güçlü alıcılı."
             }
-
-        # 4. STAGFLASYON & FAİZ BASKISI
+        # STAGFLASYON
         elif yields > 1.0 and fed_pivot > 0.8 and spx <= 0:
             return {
                 'name': "🌋 STAGFLASYON & FED ŞAHİN SIKIŞMASI",
                 'css': "regime-stagflation",
                 'desc': "Yükselen faizler değerlemeleri eziyor. Güvenli liman arayışı."
             }
-
-        # 5. DEFLASYONİST ÇÖKÜŞ / SİSTEMİK KRİZ
+        # DEFLASYONİST ÇÖKÜŞ
         elif spx < -0.5 and (credit < -0.8 or funding_stress < -1.2):
             return {
                 'name': "❄️ DEFLASYONİST ÇÖKÜŞ & BANKACILIK/FONLAMA KRİZİ",
                 'css': "regime-deflation",
                 'desc': "Bankalararası fonlama kilitlendi, tüm riskli varlıklardan nakde kaçış."
             }
-
         else:
             return {
                 'name': "⚪ DENGELİ GÜNLÜK GEÇİŞ REJİMİ (Konsolidasyon)",
@@ -197,13 +203,14 @@ class FundingLiquidityEngine:
     def compute_all_asset_scores(self, df):
         scores = {}
         
-        raw_spx = self.calculate_active_tape_momentum(df['SPX'])
-        raw_nq  = self.calculate_active_tape_momentum(df['NQ'])
-        raw_xau = self.calculate_active_tape_momentum(df['XAU'])
-        raw_xag = self.calculate_active_tape_momentum(df['XAG'])
+        # 1. TÜM GÖSTERGELERİN ÖNGÖRÜSEL İVMELERİ
+        raw_spx = self.calculate_predictive_kinematics(df['SPX'])
+        raw_nq  = self.calculate_predictive_kinematics(df['NQ'])
+        raw_xau = self.calculate_predictive_kinematics(df['XAU'])
+        raw_xag = self.calculate_predictive_kinematics(df['XAG'])
 
-        raw_btc = self.calculate_active_tape_momentum(df['BTC'])
-        raw_eth = self.calculate_active_tape_momentum(df['ETH']) if 'ETH' in df else raw_btc
+        raw_btc = self.calculate_predictive_kinematics(df['BTC'])
+        raw_eth = self.calculate_predictive_kinematics(df['ETH']) if 'ETH' in df else raw_btc
         crypto_composite_mom = (0.65 * raw_btc) + (0.35 * raw_eth)
 
         equity_common = (0.50 * raw_spx) + (0.50 * raw_nq)
@@ -215,26 +222,22 @@ class FundingLiquidityEngine:
         xag_mom = (0.75 * metals_common) + (0.25 * raw_xag)
 
         btc_macro = raw_btc
-        jpy_macro = self.calculate_active_tape_momentum(df['JPY'])
-        dxy_macro = -self.calculate_active_tape_momentum(df['EUR'])
+        jpy_macro = self.calculate_predictive_kinematics(df['JPY'])
+        dxy_macro = -self.calculate_predictive_kinematics(df['EUR'])
         
-        fed_pivot_pressure = -self.calculate_active_tape_momentum(df['BONDS_2Y'])
-        yield_macro = -self.calculate_active_tape_momentum(df['BONDS_10Y'])
+        fed_pivot_pressure = -self.calculate_predictive_kinematics(df['BONDS_2Y'])
+        yield_macro = -self.calculate_predictive_kinematics(df['BONDS_10Y'])
         
-        # YENİ KURUMSAL LİKİDİTE OMURGASI (Çoklu Doğrusallık Silindi):
-        # 1. Saf Şirket Temerrüt Riski (HYG / LQD)
-        credit_risk = self.calculate_ratio_active_momentum(df['HYG'], df['LQD'])
+        credit_risk = self.calculate_ratio_predictive(df['HYG'], df['LQD'])
+        funding_stress = self.calculate_ratio_predictive(df['KRE'], df['XLF'])
         
-        # 2. YENİ: Bankalararası Fonlama & Likidite Stresi (KRE / XLF - SOFR/Repo Erken Uyarı Radarı)
-        funding_stress = self.calculate_ratio_active_momentum(df['KRE'], df['XLF'])
-        
-        real_yield_shock = self.calculate_ratio_active_momentum(df['BONDS_10Y'], df['BONDS_30Y'])
-        copper_gold = self.calculate_ratio_active_momentum(df['COPPER'], df['XAU'])
-        gold_oil = self.calculate_ratio_active_momentum(df['XAU'], df['OIL'])
-        slv_gld = self.calculate_ratio_active_momentum(df['XAG'], df['XAU'])
-        xme_gld = self.calculate_ratio_active_momentum(df['XME'], df['XAU'])
-        sector_rot = self.calculate_ratio_active_momentum(df['XLK'], df['XLF'])
-        eth_btc_beta = self.calculate_ratio_active_momentum(df['ETH'], df['BTC'])
+        real_yield_shock = self.calculate_ratio_predictive(df['BONDS_10Y'], df['BONDS_30Y'])
+        copper_gold = self.calculate_ratio_predictive(df['COPPER'], df['XAU'])
+        gold_oil = self.calculate_ratio_predictive(df['XAU'], df['OIL'])
+        slv_gld = self.calculate_ratio_predictive(df['XAG'], df['XAU'])
+        xme_gld = self.calculate_ratio_predictive(df['XME'], df['XAU'])
+        sector_rot = self.calculate_ratio_predictive(df['XLK'], df['XLF'])
+        eth_btc_beta = self.calculate_ratio_predictive(df['ETH'], df['BTC'])
 
         factors_pool = {
             'SPX_Mom': spx_mom, 'NQ_Mom': nq_mom, 'XAU_Mom': xau_mom, 'XAG_Mom': xag_mom,
@@ -247,11 +250,11 @@ class FundingLiquidityEngine:
             'XME_GLD_Ratio': xme_gld, 'BTC_Liquidity': btc_macro, 'Carry_Trade': jpy_macro
         }
 
-        # REJİM MOTORU
+        # REJİM KONSENSÜSÜ
         regime_info = self.detect_rigorous_macro_regime(factors_pool)
 
         # HESAPLAMA MOTORU
-        def build_funding_engine_result(base_weights, factors_dict):
+        def build_predictive_result(base_weights, factors_dict):
             multipliers = {}
             for k, w in base_weights.items():
                 val = abs(factors_dict.get(k, 0.0))
@@ -281,7 +284,7 @@ class FundingLiquidityEngine:
                 contribution = val * (w / 100.0)
                 breakdown.append({
                     'Katman (Öncü Faktör)': k,
-                    'Aktif Seans İvmesi': round(val, 2),
+                    'Öngörüsel İvme (Kinematics)': round(val, 2),
                     'Dinamik Ağırlık (%)': round(w, 1),
                     'Net Katkı': round(contribution, 3)
                 })
@@ -309,15 +312,15 @@ class FundingLiquidityEngine:
             neg_desc = f"{top_negative['Katman (Öncü Faktör)']} ({top_negative['Net Katkı']:.3f})" if top_negative is not None and top_negative['Net Katkı'] < 0 else "Belirgin negatif baskı yok"
 
             if final_score > 15:
-                structure = f"Makro alıcılar üstün. En büyük destekçi: {pos_desc}. Ana fren: {neg_desc}."
+                structure = f"Öngörüsel alıcılar üstün. En büyük itiş: {pos_desc}. Ana fren: {neg_desc}."
                 action = "🚀 TRENDİ SÜR: 4H Alım yönlü pozisyonlar güvenle taşınabilir. Direnç kırılımlarını takip et."
                 badge_cls = "action-badge"
             elif final_score < -15:
-                structure = f"Makro satıcılar üstün. En büyük baskı: {neg_desc}. Karşı itiş: {pos_desc}."
+                structure = f"Öngörüsel satıcılar üstün. En büyük baskı: {neg_desc}. Karşı itiş: {pos_desc}."
                 action = "🩸 SATIŞ BASKISI DEVAM: 4H Satış yönlü pozisyonlar korunabilir. Destek kırılımlarını izle."
                 badge_cls = "action-badge-bear"
             else:
-                structure = f"Piyasa dengede. İtici güç: {pos_desc} vs Frenleyici güç: {neg_desc} birbirini dengeliyor."
+                structure = f"Gelecek beklentileri dengede. İtici güç: {pos_desc} vs Frenleyici güç: {neg_desc} birbirini dengeliyor."
                 action = "🛑 NAKİTTE BEKLE: Net kırılım (+15 üstü veya -15 altı) gelene kadar yeni pozisyon açma."
                 badge_cls = "action-badge-neutral"
 
@@ -325,59 +328,52 @@ class FundingLiquidityEngine:
 
             return {'score': final_score, 'table': breakdown_df, 'msg': msg, 'css': css, 'commentary': commentary}
 
-        # ----------------------------------------------------
-        # 5 VARLIK İÇİN YENİ KURUMSAL MATRİSLER (ÇAKIŞMASIZ)
-        # ----------------------------------------------------
-        # 1. GÜMÜŞ (SI=F)
+        # MATRİSLER
         xag_base = {
             'XAG_Mom': 25.0, 'Copper_Gold': 15.0, 'Fed_Pivot_Pressure': -15.0,
             'XME_GLD_Ratio': 10.0, 'SLV_GLD_Beta': 10.0, 'DXY_Pressure': -10.0,
             'Real_Yield_Shock': 5.0, 'Bond_Yield_Pressure': -5.0, 'BTC_Liquidity': 5.0, 'Gold_Oil': 5.0
         }
-        scores['XAG'] = build_funding_engine_result(xag_base, factors_pool)
+        scores['XAG'] = build_predictive_result(xag_base, factors_pool)
 
-        # 2. ALTIN (GC=F - Fonlama Stresi Krizinde Altın Uçar: -10%)
         xau_base = {
             'XAU_Mom': 25.0, 'Real_Yield_Shock': 20.0, 'Fed_Pivot_Pressure': -15.0,
             'DXY_Pressure': -15.0, 'Bond_Yield_Pressure': -10.0, 'Funding_Liquidity_Stress': -10.0,
             'Gold_Oil': 5.0, 'SLV_GLD_Beta': 5.0, 'Carry_Trade': 5.0, 'Copper_Gold': -3.0
         }
-        scores['XAU'] = build_funding_engine_result(xau_base, factors_pool)
+        scores['XAU'] = build_predictive_result(xau_base, factors_pool)
 
-        # 3. S&P 500 (ES=F - Fonlama ve Temerrüt Ayrıştırıldı)
         spx_base = {
             'SPX_Mom': 25.0, 'Funding_Liquidity_Stress': 15.0, 'Credit_Risk_Spread': 15.0,
             'Fed_Pivot_Pressure': -15.0, 'Bond_Yield_Pressure': -10.0, 'DXY_Pressure': -10.0,
             'Sector_Rotation': 10.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0, 'Copper_Gold': 5.0
         }
-        scores['SPX'] = build_funding_engine_result(spx_base, factors_pool)
+        scores['SPX'] = build_predictive_result(spx_base, factors_pool)
 
-        # 4. NASDAQ (NQ=F)
         nq_base = {
             'NQ_Mom': 25.0, 'Fed_Pivot_Pressure': -20.0, 'Sector_Rotation': 15.0,
             'Bond_Yield_Pressure': -15.0, 'Funding_Liquidity_Stress': 10.0, 'Credit_Risk_Spread': 10.0,
             'DXY_Pressure': -10.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0, 'Copper_Gold': 5.0
         }
-        scores['NQ'] = build_funding_engine_result(nq_base, factors_pool)
+        scores['NQ'] = build_predictive_result(nq_base, factors_pool)
 
-        # 5. KRİPTO (BTC+ETH)
         crypto_base = {
             'Crypto_Mom': 25.0, 'Fed_Pivot_Pressure': -20.0, 'Sector_Rotation': 10.0,
             'ETH_BTC_Beta': 10.0, 'DXY_Pressure': -10.0, 'Funding_Liquidity_Stress': 10.0,
             'Credit_Risk_Spread': 5.0, 'Carry_Trade': 5.0, 'Copper_Gold': 5.0, 'Bond_Yield_Pressure': -5.0
         }
-        scores['CRYPTO'] = build_funding_engine_result(crypto_base, factors_pool)
+        scores['CRYPTO'] = build_predictive_result(crypto_base, factors_pool)
 
         return scores, regime_info
 
 # ==========================================
 # 3. DASHBOARD VE GÖRSELLEŞTİRME
 # ==========================================
-engine = FundingLiquidityEngine()
+engine = PredictiveKinematicEngine()
 
-st.title("🏛️ TIER-1 MASTER TERMINAL (v140.0)")
-st.markdown('<span class="status-badge">⚡ SOFR/REPO FUNDING STRESS & ZERO-MULTICOLLINEARITY ENGINE</span>', unsafe_allow_html=True)
-st.caption("Bankalararası Fonlama Stresi (KRE/XLF) + Çakışmasız Saf Kurumsal Kredi Matrisi")
+st.title("🏛️ TIER-1 PREDICTIVE TERMINAL (v150.0)")
+st.markdown('<span class="status-badge">🔮 KINEMATICS & 2ND DERIVATIVE FORWARD ENGINE</span>', unsafe_allow_html=True)
+st.caption("Fiyat Hızı + İvme (2. Türev) + Aşırı Şişme/Düzeltme Çapası | Geleceğin Yönünü Hesaplayan Model")
 
 try:
     df_grid = engine.fetch_synchronized_grid()
@@ -387,7 +383,6 @@ try:
     else:
         results, regime_info = engine.compute_all_asset_scores(df_grid)
 
-        # HAKİKİ REJİM BANDI
         st.markdown(f"""
         <div class="regime-box {regime_info['css']}">
             Mevcut Küresel Makro Rejim: {regime_info['name']}<br>
@@ -414,20 +409,19 @@ try:
             with col1:
                 st.markdown(f"### {asset_title} 4H Rotası")
                 
-                # Nötr bölge [-15, +15] BEYAZ!
                 if score > 15:
-                    c = "#00E676"  # Yeşil (Boğa)
+                    c = "#00E676"
                 elif score < -15:
-                    c = "#FF1744"  # Kırmızı (Ayı)
+                    c = "#FF1744"
                 else:
-                    c = "#ECEFF1"  # Beyaz (Nötr)
+                    c = "#ECEFF1"
 
                 st.markdown(f"<h1 style='color: {c}; font-size: 55px; margin:0;'>{score:.1f}</h1>", unsafe_allow_html=True)
                 st.markdown(f'<div class="{div_class}">{div_msg}</div>', unsafe_allow_html=True)
                 
                 st.markdown(f"""
                 <div class="commentary-card">
-                    <div class="commentary-header">📊 Denetlenmiş Teşhis:</div>
+                    <div class="commentary-header">📊 Öngörüsel Teşhis:</div>
                     <div>{commentary['structure']}</div>
                     <div class="{commentary['badge_cls']}">🎯 Aksiyon: {commentary['action']}</div>
                 </div>
