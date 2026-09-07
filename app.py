@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v120.0)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 MASTER TERMINAL (v120.1)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -36,10 +36,10 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # 1 dakikada bir otomatik yenile
-count = st_autorefresh(interval=60000, limit=None, key="macro_1200_refresh")
+count = st_autorefresh(interval=60000, limit=None, key="macro_1201_refresh")
 
 # ==========================================
-# 2. AKTİF BANT QUANT MAKRO MOTORU (v120.0)
+# 2. AKTİF BANT QUANT MAKRO MOTORU (v120.1)
 # ==========================================
 class ActiveTapeMacroEngine:
     def __init__(self):
@@ -100,15 +100,10 @@ class ActiveTapeMacroEngine:
         return df
 
     def calculate_active_tape_momentum(self, s):
-        """
-        TATİL & KAPALI PİYASA GEÇİRMEZ AKTİF BANT MOTORU:
-        Hareketsiz düz barları süzer, doğrudan son aktif işlem gören seansın
-        gerçek mumlarından ivme hesaplar. Asla 0.00 üretmez!
-        """
+        """Hareketsiz düz barları süzer, doğrudan son aktif canlı seans barlarından ivme hesaplar."""
         if s is None or s.empty:
             return 0.0
         
-        # Tatildeki hareketsiz kopyalanmış barları ayıkla
         s_active = s.loc[s.shift() != s].dropna()
         if len(s_active) < 8:
             s_active = s.dropna()
@@ -116,7 +111,6 @@ class ActiveTapeMacroEngine:
         if len(s_active) < 8:
             return 0.0
         
-        # Son aktif barlar üzerinden getiri hesapla
         idx_daily = min(32, len(s_active) - 1)
         idx_4h    = min(16, len(s_active) - 1)
         idx_1h    = min(4, len(s_active) - 1)
@@ -145,7 +139,7 @@ class ActiveTapeMacroEngine:
     def compute_all_asset_scores(self, df):
         scores = {}
         
-        # 1. TÜM GÖSTERGELERİN AKTİF İVMELERİ (Asla 0 Kalmaz)
+        # 1. TÜM GÖSTERGELERİN AKTİF İVMELERİ
         raw_spx = self.calculate_active_tape_momentum(df['SPX'])
         raw_nq  = self.calculate_active_tape_momentum(df['NQ'])
         raw_xau = self.calculate_active_tape_momentum(df['XAU'])
@@ -180,6 +174,7 @@ class ActiveTapeMacroEngine:
         sector_rot = self.calculate_ratio_active_momentum(df['XLK'], df['XLF'])
         eth_btc_beta = self.calculate_ratio_active_momentum(df['ETH'], df['BTC'])
 
+        # TÜM FAKTÖRLERİN MERKEZİ HAVUZU
         factors_pool = {
             'SPX_Mom': spx_mom, 'NQ_Mom': nq_mom, 'XAU_Mom': xau_mom, 'XAG_Mom': xag_mom,
             'Crypto_Mom': crypto_composite_mom, 'ETH_BTC_Beta': eth_btc_beta,
@@ -206,7 +201,7 @@ class ActiveTapeMacroEngine:
         else:
             regime_info = {'name': "⚪ DENGELİ GEÇİŞ REJİMİ (Konsolidasyon)", 'css': "regime-neutral", 'desc': "Piyasa Fed beklentileri öncesinde dengeli konsolide oluyor."}
 
-        # DENGELENMİŞ HESAPLAMA MOTORU (%20-%25 FİYAT TAVANI)
+        # DENGELENMİŞ HESAPLAMA MOTORU
         def build_active_tape_result(base_weights, factors_dict):
             multipliers = {}
             for k, w in base_weights.items():
@@ -246,7 +241,6 @@ class ActiveTapeMacroEngine:
             total_score = sum(factors_dict.get(k, 0.0) * (dyn_weights[k] / 100.0) for k in dyn_weights)
             final_score = np.tanh(total_score / 1.4) * 100
 
-            # GÜVEN EŞİĞİ (±15 Nötr Alanı)
             if final_score > 15:
                 msg = "🚀 GÜÇLÜ BOĞA TRENDİ (4H Pozisyon Yönü: ALIM)"
                 css = "div-bull"
@@ -275,7 +269,7 @@ class ActiveTapeMacroEngine:
             return {'score': final_score, 'table': breakdown_df, 'msg': msg, 'css': css, 'commentary': commentary}
 
         # ----------------------------------------------------
-        # 5 VARLIK MATRİSLERİ
+        # 5 VARLIK İÇİN HATASIZ ÇAĞRILAR (factors_pool BAĞLANDI)
         # ----------------------------------------------------
         # 1. GÜMÜŞ (SI=F)
         xag_base = {
@@ -283,7 +277,7 @@ class ActiveTapeMacroEngine:
             'XME_GLD_Ratio': 10.0, 'SLV_GLD_Beta': 10.0, 'DXY_Pressure': -10.0,
             'Real_Yield_Shock': 5.0, 'Bond_Yield_Pressure': -5.0, 'BTC_Liquidity': 5.0, 'Gold_Oil': 5.0
         }
-        scores['XAG'] = build_active_tape_result(xag_base, xag_factors)
+        scores['XAG'] = build_active_tape_result(xag_base, factors_pool)
 
         # 2. ALTIN (GC=F)
         xau_base = {
@@ -291,7 +285,7 @@ class ActiveTapeMacroEngine:
             'DXY_Pressure': -15.0, 'Bond_Yield_Pressure': -10.0, 'Gold_Oil': 10.0,
             'SLV_GLD_Beta': 5.0, 'Carry_Trade': 5.0, 'Copper_Gold': -3.0, 'BTC_Liquidity': -2.0
         }
-        scores['XAU'] = build_active_tape_result(xau_base, xau_factors)
+        scores['XAU'] = build_active_tape_result(xau_base, factors_pool)
 
         # 3. S&P 500 (ES=F)
         spx_base = {
@@ -299,7 +293,7 @@ class ActiveTapeMacroEngine:
             'Credit_Flight_Safety': 10.0, 'Bond_Yield_Pressure': -10.0, 'DXY_Pressure': -10.0,
             'Sector_Rotation': 10.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0, 'Copper_Gold': 5.0
         }
-        scores['SPX'] = build_active_tape_result(spx_base, spx_factors)
+        scores['SPX'] = build_active_tape_result(spx_base, factors_pool)
 
         # 4. NASDAQ (NQ=F)
         nq_base = {
@@ -307,7 +301,7 @@ class ActiveTapeMacroEngine:
             'Bond_Yield_Pressure': -15.0, 'Credit_Risk_Spread': 10.0, 'DXY_Pressure': -10.0,
             'Credit_Flight_Safety': 5.0, 'Carry_Trade': 5.0, 'BTC_Liquidity': 5.0, 'Copper_Gold': 5.0
         }
-        scores['NQ'] = build_active_tape_result(nq_base, nq_factors)
+        scores['NQ'] = build_active_tape_result(nq_base, factors_pool)
 
         # 5. KRİPTO (BTC+ETH)
         crypto_base = {
@@ -324,7 +318,7 @@ class ActiveTapeMacroEngine:
 # ==========================================
 engine = ActiveTapeMacroEngine()
 
-st.title("🏛️ TIER-1 MASTER TERMINAL (v120.0)")
+st.title("🏛️ TIER-1 MASTER TERMINAL (v120.1)")
 st.markdown('<span class="status-badge">⚡ ACTIVE TAPE & HOLIDAY-PROOF ENGINE</span>', unsafe_allow_html=True)
 st.caption("Tatil ve Kapalı Piyasa Düz Çizgi Süzgeci | Canlı Seans İvmesi")
 
