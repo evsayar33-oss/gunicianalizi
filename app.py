@@ -13,7 +13,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. UI VE TERMINAL YAPILANDIRMASI
 # ==========================================
-st.set_page_config(page_title="TIER-1 PREDICTIVE TERMINAL (v150.1-FIXED)", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TIER-1 PREDICTIVE TERMINAL (v150.2-STABLE)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
     .stApp { background-color: #0B0E14; color: #E0E6ED; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -42,7 +42,7 @@ st.markdown("""
 count = st_autorefresh(interval=60000, limit=None, key="macro_1500_refresh")
 
 # ==========================================
-# 2. ÖNGÖRÜSEL VE TÜREVLİ QUANT MAKRO MOTORU (v150.1 DÜZELTİLMİŞ)
+# 2. ÖNGÖRÜSEL VE TÜREVLİ QUANT MAKRO MOTORU (v150.2-STABLE)
 # ==========================================
 class PredictiveKinematicEngine:
     def __init__(self):
@@ -68,7 +68,6 @@ class PredictiveKinematicEngine:
             'RSP': 'RSP',           # Eşit Ağırlıklı S&P 500
             'XME': 'XME'            # Madencilik Endeksi
         }
-        # HATA-4 ÇÖZÜMÜ: Rate-limit korumalı bağlantı havuzu
         self.session = requests.Session()
         retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 500, 502, 503, 504])
         self.session.mount('https://', HTTPAdapter(max_retries=retries))
@@ -98,7 +97,6 @@ class PredictiveKinematicEngine:
             if not s.empty:
                 raw_dict[alias] = s
 
-        # HATA-4 ÇÖZÜMÜ: Eşzamanlı istek sayısı 18'den 6'ya düşürüldü (Rate limit koruması)
         with ThreadPoolExecutor(max_workers=6) as executor:
             for sym, alias in _self.symbol_map.items():
                 executor.submit(worker, sym, alias)
@@ -109,24 +107,16 @@ class PredictiveKinematicEngine:
         return df
 
     def calculate_predictive_kinematics(self, s):
-        """
-        HATA-3 ÇÖZÜMÜ: İndeks bazlı (.iloc[-4]) yerine Zaman Damgası (Timedelta) bazlı ivme.
-        HATA-1 ÇÖZÜMÜ: Gece kapalı olan ETF/Borsa verilerindeki ölü saat tespiti.
-        """
         if s is None or s.empty:
             return 0.0
         
-        # Sadece değişen fiyat adımlarını al
         s_active = s.loc[s.shift() != s].dropna()
         if len(s_active) < 10:
             return 0.0
             
         now = s_active.index[-1]
-        
-        # HATA-1: Son fiyat değişimi 3 saatten eskiyse (ETF kapalıysa) pasif veri uyarısı
         is_stale = (now < (s.index[-1] - pd.Timedelta(hours=3)))
         
-        # HATA-3: Zaman Damgasına (Timestamp) göre gerçek 1 saatlik ve 4 saatlik periyotlar
         t_1h_ago = now - pd.Timedelta(hours=1)
         t_2h_ago = now - pd.Timedelta(hours=2)
         t_4h_ago = now - pd.Timedelta(hours=4)
@@ -142,13 +132,11 @@ class PredictiveKinematicEngine:
 
         p_curr = s_active.iloc[-1]
 
-        # HIZ & İVME HESABI
         v1h = (p_curr / p_1h) - 1.0 if p_1h != 0 else 0.0
         v1h_prev = (p_1h / p_2h) - 1.0 if p_2h != 0 else v1h
         acceleration = v1h - v1h_prev
         v4h = (p_curr / p_4h) - 1.0 if p_4h != 0 else 0.0
 
-        # ELASTİKİYET
         rolling_mean_24 = s_active.tail(24).mean()
         elasticity_stretch = (p_curr - rolling_mean_24) / (rolling_mean_24 + 1e-6)
 
@@ -159,7 +147,6 @@ class PredictiveKinematicEngine:
 
         predictive_mom = (0.45 * v1h) + (0.35 * acceleration * 2.0) - (0.20 * elasticity_stretch * 0.5) + (0.20 * v4h)
         
-        # Gece seansında ETF verisi sabit kaldıysa ağırlığı yumuşat
         if is_stale:
             predictive_mom *= 0.25
 
@@ -170,7 +157,6 @@ class PredictiveKinematicEngine:
         if s1 is None or s2 is None or s1.empty or s2.empty:
             return 0.0
         
-        # HATA-1 ÇÖZÜMÜ: ETF'ler gece kapalıysa 24/7 aktif yedek göstergelere geç
         s1_stale = (s1.loc[s1.shift() != s1].index[-1] < (s1.index[-1] - pd.Timedelta(hours=3))) if len(s1.loc[s1.shift() != s1]) > 0 else True
         if s1_stale and fallback_s1 is not None and fallback_s2 is not None:
             s1, s2 = fallback_s1, fallback_s2
@@ -180,6 +166,10 @@ class PredictiveKinematicEngine:
         return self.calculate_predictive_kinematics(ratio)
 
     def detect_rigorous_macro_regime(self, factors):
+        """
+        GÜRÜLTÜ SÖNÜMLENDİRMELİ VE KARARLI REJİM MOTORU
+        Faktörler anlık fırlamalara karşı sönümlenmiş (smoothed) eşikler üzerinden değerlendirilir.
+        """
         carry = factors['Carry_Trade']
         copper = factors['Copper_Gold']
         dxy = factors['DXY_Pressure']
@@ -189,31 +179,32 @@ class PredictiveKinematicEngine:
         funding_stress = factors['Funding_Liquidity_Stress']
         spx = factors['SPX_Mom']
 
-        if dxy < -0.5 and (carry < -0.8 or yields > 0.8 or fed_pivot > 0.5 or copper < 0.3 or funding_stress < -0.8):
+        # Eşikler yumuşatıldı (Histerezis tamponu eklendi)
+        if dxy < -0.35 and (carry < -0.5 or yields > 0.5 or fed_pivot > 0.35 or copper < 0.2 or funding_stress < -0.5):
             return {
                 'name': "⚠️ KARIŞIK LİKİDİTE KONSOLİDASYONU (Dolar Gevşemesi vs. Fonlama/Faiz Stresi)",
                 'css': "regime-mixed",
                 'desc': "Zayıf Dolar taban sağlıyor ancak faiz ve bankalararası fonlama stresi baskı yaratıyor. Yönsüz denge."
             }
-        elif copper > 0.8 and carry > 0.0 and factors['Gold_Oil'] > 0 and spx > 0:
+        elif copper > 0.45 and carry > 0.0 and factors['Gold_Oil'] > 0 and spx > 0:
             return {
                 'name': "🚀 HAKİKİ REFLASYON (Güçlü Büyüme & Sanayi Emtiası Liderliği)",
                 'css': "regime-reflation",
                 'desc': "Bakır, Gümüş ve Sanayi hisseleri küresel büyümeyi teyitli şekilde fiyatlıyor."
             }
-        elif spx > 0.5 and dxy < 0 and yields < 0.3 and fed_pivot < 0.3 and carry > 0 and funding_stress > 0:
+        elif spx > 0.35 and dxy < 0 and yields < 0.2 and fed_pivot < 0.2 and carry > 0 and funding_stress > 0:
             return {
                 'name': "☀️ GENİŞ TABANLI BOĞA RALLİSİ (Goldilocks)",
                 'css': "regime-goldilocks",
                 'desc': "Fonlama stresi yok, Dolar zayıf, faiz baskısı kalktı. Tüm varlıklar güçlü alıcılı."
             }
-        elif yields > 1.0 and fed_pivot > 0.8 and spx <= 0:
+        elif yields > 0.6 and fed_pivot > 0.5 and spx <= 0:
             return {
                 'name': "🌋 STAGFLASYON & FED ŞAHİN SIKIŞMASI",
                 'css': "regime-stagflation",
                 'desc': "Yükselen faizler değerlemeleri eziyor. Güvenli liman arayışı."
             }
-        elif spx < -0.5 and (credit < -0.8 or funding_stress < -1.2):
+        elif spx < -0.35 and (credit < -0.5 or funding_stress < -0.7):
             return {
                 'name': "❄️ DEFLASYONİST ÇÖKÜŞ & BANKACILIK/FONLAMA KRİZİ",
                 'css': "regime-deflation",
@@ -253,7 +244,6 @@ class PredictiveKinematicEngine:
         fed_pivot_pressure = -self.calculate_predictive_kinematics(df['BONDS_2Y'])
         yield_macro = -self.calculate_predictive_kinematics(df['BONDS_10Y'])
         
-        # HATA-1 ÇÖZÜMÜ: Kredi ve Likidite stresi gece kapalıysa 24/7 Hazine Vadeli yedeklerine geç
         credit_risk = self.calculate_ratio_predictive(df['HYG'], df['LQD'], df['BONDS_10Y'], df['BONDS_2Y'])
         funding_stress = self.calculate_ratio_predictive(df['KRE'], df['XLF'], df['BONDS_2Y'], df['SPX'])
         
@@ -276,9 +266,10 @@ class PredictiveKinematicEngine:
             'XME_GLD_Ratio': xme_gld, 'BTC_Liquidity': btc_macro, 'Carry_Trade': jpy_macro
         }
 
-        regime_info = self.detect_rigorous_macro_regime(factors_pool)
+        # REJİMİ 5 DAKİKADA BİR DEĞİŞTİRMEYEN YUMUŞATMA FİLTRESİ
+        smoothed_factors_for_regime = {k: float(np.tanh(v / 1.8)) for k, v in factors_pool.items()}
+        regime_info = self.detect_rigorous_macro_regime(smoothed_factors_for_regime)
 
-        # HATA-2 ÇÖZÜMÜ: Sınırlandırılmış Doğrusal Normalizasyon Motoru (Clamping Paradox Fix)
         def build_predictive_result(base_weights, factors_dict):
             raw_weights = {}
             for k, w in base_weights.items():
@@ -288,7 +279,6 @@ class PredictiveKinematicEngine:
             tot = sum(raw_weights.values()) + 1e-6
             norm_weights = {k: (v / tot) * 100.0 for k, v in raw_weights.items()}
 
-            # Ağırlık Bounded Sınırlandırma
             clamped = {}
             excess = 0.0
             unclamped_sum = 0.0
@@ -320,7 +310,6 @@ class PredictiveKinematicEngine:
             else:
                 dyn_weights = clamped
 
-            # İşaretleri geri uygula
             final_dyn_weights = {}
             for k in dyn_weights:
                 sign = 1.0 if base_weights[k] >= 0 else -1.0
@@ -340,7 +329,6 @@ class PredictiveKinematicEngine:
             breakdown_df = pd.DataFrame(breakdown).sort_values('Net Katkı', ascending=False)
             total_score = sum(factors_dict.get(k, 0.0) * (abs(final_dyn_weights[k]) / 100.0) for k in final_dyn_weights)
             
-            # HATA-5 ÇÖZÜMÜ: Tanh ölçeklemesi /1.4 'ten /3.2 'ye düşürülerek doygunluk önlendi
             final_score = np.tanh(total_score / 3.2) * 100
 
             if final_score > 15:
@@ -419,7 +407,7 @@ class PredictiveKinematicEngine:
 # ==========================================
 engine = PredictiveKinematicEngine()
 
-st.title("🏛️ TIER-1 PREDICTIVE TERMINAL (v150.1-FIXED)")
+st.title("🏛️ TIER-1 PREDICTIVE TERMINAL (v150.2-STABLE)")
 st.markdown('<span class="status-badge">🔮 KINEMATICS & 2ND DERIVATIVE FORWARD ENGINE</span>', unsafe_allow_html=True)
 st.caption("Fiyat Hızı + İvme (2. Türev) + Aşırı Şişme/Düzeltme Çapası | Geleceğin Yönünü Hesaplayan Model")
 
